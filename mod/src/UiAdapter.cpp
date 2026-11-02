@@ -922,8 +922,12 @@ void RefreshPlaybackState(const std::shared_ptr<UiWindowContext>& context) noexc
                 });
         }
 
-        stage = L"Player::PlayerState (IPlayer QI / get_PlayerState)";
-        auto state = player.PlayerState();
+        stage = L"Player::PlayerState IPlayer QueryInterface";
+        auto playerInterface = player.as<ApplePlayback::abi::IPlayer>();
+        void* stateValue{};
+        stage = L"Player::PlayerState get_PlayerState ABI call";
+        winrt::check_hresult(playerInterface->get_PlayerState(&stateValue));
+        ApplePlayback::PlayerState state{stateValue, winrt::take_ownership_from_abi};
         if (state != context->playerState) {
             if (context->playerState) {
                 stage = L"PlayerState.PropertyChanged remove (INotifyPropertyChanged QI / event remove)";
@@ -941,8 +945,10 @@ void RefreshPlaybackState(const std::shared_ptr<UiWindowContext>& context) noexc
             return;
         }
 
-        stage = L"Player::NowPlayingItem (IPlayer QI / get_NowPlayingItem)";
-        auto item = player.NowPlayingItem();
+        stage = L"Player::NowPlayingItem get_NowPlayingItem ABI call";
+        void* itemValue{};
+        winrt::check_hresult(playerInterface->get_NowPlayingItem(&itemValue));
+        ApplePlayback::NowPlayingItem item{itemValue, winrt::take_ownership_from_abi};
         if (item != context->playingItem) {
             if (context->playingItem) {
                 stage = L"NowPlayingItem.PropertyChanged remove (INotifyPropertyChanged QI / event remove)";
@@ -961,12 +967,21 @@ void RefreshPlaybackState(const std::shared_ptr<UiWindowContext>& context) noexc
             }
         }
 
-        stage = L"NowPlayingItem::PlayQueueItemID (INowPlayingItem QI / get_PlayQueueItemID)";
-        const auto queueItem = item ? item.PlayQueueItemID() : 0;
-        stage = L"PlayerState::IsPlaying (IPlayerState QI / get_IsPlaying)";
-        const bool playing = state.IsPlaying();
-        stage = L"PlayerState::IsPaused (IPlayerState QI / get_IsPaused)";
-        const bool paused = state.IsPaused();
+        std::uint64_t queueItem{};
+        if (item) {
+            stage = L"NowPlayingItem INowPlayingItem QueryInterface";
+            auto itemInterface = item.as<ApplePlayback::abi::INowPlayingItem>();
+            stage = L"NowPlayingItem get_PlayQueueItemID ABI call";
+            winrt::check_hresult(itemInterface->get_PlayQueueItemID(&queueItem));
+        }
+        stage = L"PlayerState IPlayerState QueryInterface";
+        auto stateInterface = state.as<ApplePlayback::abi::IPlayerState>();
+        bool playing{};
+        stage = L"PlayerState get_IsPlaying ABI call";
+        winrt::check_hresult(stateInterface->get_IsPlaying(&playing));
+        bool paused{};
+        stage = L"PlayerState get_IsPaused ABI call";
+        winrt::check_hresult(stateInterface->get_IsPaused(&paused));
         const auto observed = ammod::ui::ClassifyPlaybackState(playing, paused);
         g_playbackObserverOwner.store(context.get());
         context->playbackError = 0;

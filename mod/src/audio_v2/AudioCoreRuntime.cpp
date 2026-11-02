@@ -1502,7 +1502,11 @@ DWORD AudioCoreRuntime::WorkerMain() noexcept {
             nativePumpBufferedFrames_.store(
                 graphBound_ ? static_cast<std::uint64_t>(coordinator_.BufferedFrames()) : 0,
                 std::memory_order_release);
-            if (coordinator_.Phase() == AudioCoreGatePhase::Active) {
+            const auto phase = coordinator_.Phase();
+            if (phase == AudioCoreGatePhase::Capturing ||
+                phase == AudioCoreGatePhase::Active) {
+                // Capturing telemetry is essential when activation is blocked:
+                // otherwise the queue/prebuffer state is invisible until Active.
                 const auto now = GetTickCount64();
                 if (nextTelemetryTick_ == 0 || now >= nextTelemetryTick_) {
                     nextTelemetryTick_ = now + 5000;
@@ -1566,7 +1570,7 @@ void AudioCoreRuntime::Emit(AudioCoreRuntimeEvent event, HRESULT result) noexcep
     snapshot.reducingBitDepth = coordinator_.IsReducingBitDepth();
     snapshot.sourceMappingExact = coordinator_.IsSourceMappingExact();
     snapshot.converting = coordinator_.IsConverting();
-    if (event == AudioCoreRuntimeEvent::Telemetry) snapshot.stats = Stats();
+    if (event == AudioCoreRuntimeEvent::Telemetry) snapshot.stats = StatsLocked();
     else if (event == AudioCoreRuntimeEvent::Faulted)
         snapshot.stats.sink = coordinator_.Sink().Stats();
     std::lock_guard lock(pendingEventMutex_);
@@ -1655,6 +1659,37 @@ AudioCoreRuntimeStats AudioCoreRuntime::Stats() const noexcept {
         coordinator.BufferedFrames(), coordinator.Stats(), tap_.Stats(), coordinator.Sink().Stats(),
         pcmFill,
     };
+}
+ 
+AudioCoreRuntimeStats AudioCoreRuntime::StatsLocked() const noexcept {
+    auto stats = Stats();
+    stats.gatePhase = static_cast<std::uint32_t>(coordinator_.Phase());
+    stats.sinkState = static_cast<std::uint32_t>(coordinator_.SinkState());
+    stats.uiEnabled = UiEnabled();
+    stats.graphBound = graphBound_;
+    stats.graphStarted = graphStarted_;
+    stats.graphPaused = graphPaused_;
+    stats.graphControlPending = graphControlPending_;
+    stats.userPauseIntent = userPauseIntent_;
+    stats.resumePrebufferPending = resumePrebufferPending_;
+    stats.resumeProducerPending = resumeProducerPending_;
+    stats.seekFence = seekFence_;
+    stats.nativeInitialized = nativeInitialized_;
+    stats.nativeStarted = nativeStarted_;
+    stats.playbackStateAvailable = playbackStateAvailable_;
+    stats.streamingProducerDrainPending = streamingProducerDrainPending_;
+    stats.endOfStreamDrainPending = endOfStreamDrainPending_;
+    stats.hasNativeClient = nativeClient_.load(std::memory_order_acquire) != nullptr;
+    stats.hasNativeOutputUnit = graphOutputUnit_ != nullptr;
+    stats.hasPrepareNativeHandoff = callbacks_.prepareNativeHandoff != nullptr;
+    stats.nativeHandoffPending = nativeHandoffPending_.load(std::memory_order_acquire);
+    stats.nativeGraphHandoffPending =
+        nativeGraphHandoffPending_.load(std::memory_order_acquire);
+    stats.graphRate = graphRate_;
+    stats.graphChannels = graphChannels_;
+    stats.graphSourceBits = graphSourceBits_;
+    stats.requiredPrebufferFrames = requiredPrebufferFrames_;
+    return stats;
 }
 
 void AudioCoreRuntime::TryBindGraphLocked() noexcept {

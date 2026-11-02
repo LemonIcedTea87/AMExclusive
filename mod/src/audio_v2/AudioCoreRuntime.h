@@ -99,6 +99,18 @@ struct AudioCoreRuntimeStats final {
     ApplePcmTapStats tap{};
     WasapiSinkStats sink{};
     AudioCorePcmFillStats pcmFill{};
+
+    // Control-plane snapshot captured only while controlMutex_ is held.
+    std::uint32_t gatePhase{}, sinkState{};
+    std::uint32_t graphRate{}, graphChannels{}, graphSourceBits{};
+    std::uint32_t requiredPrebufferFrames{};
+    bool uiEnabled{}, graphBound{}, graphStarted{};
+    bool graphPaused{}, graphControlPending{}, userPauseIntent{};
+    bool resumePrebufferPending{}, resumeProducerPending{}, seekFence{};
+    bool nativeInitialized{}, nativeStarted{}, playbackStateAvailable{};
+    bool streamingProducerDrainPending{}, endOfStreamDrainPending{};
+    bool hasNativeClient{}, hasNativeOutputUnit{}, hasPrepareNativeHandoff{};
+    bool nativeHandoffPending{}, nativeGraphHandoffPending{};
 };
 
 struct AudioCoreRuntimeEventSnapshot final {
@@ -256,6 +268,7 @@ private:
     // Legacy non-fault observers remain serialized with coordinator state.
     void Emit(AudioCoreRuntimeEvent event, HRESULT result) noexcept;
     void FlushPendingEvents() const noexcept;
+    AudioCoreRuntimeStats StatsLocked() const noexcept;
     void AdvanceEventEpochLocked() noexcept;
     bool EventCurrentLocked(const AudioCoreRuntimeEventSnapshot&) const noexcept;
     void ArmPendingCaptureLocked(const ConverterRegistrationSnapshot&) noexcept;

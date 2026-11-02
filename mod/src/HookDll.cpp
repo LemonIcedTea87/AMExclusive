@@ -1910,6 +1910,44 @@ void AudioCoreRuntimeEventCallback(void*, const ammod::audio_v2::AudioCoreRuntim
         const auto& sink = stats.sink;
         const auto& tap = stats.tap;
         const auto& fill = stats.pcmFill;
+        const auto phaseName = [](std::uint32_t phase) -> const wchar_t* {
+            switch (static_cast<ammod::audio_v2::AudioCoreGatePhase>(phase)) {
+            case ammod::audio_v2::AudioCoreGatePhase::Off: return L"Off";
+            case ammod::audio_v2::AudioCoreGatePhase::Armed: return L"Armed";
+            case ammod::audio_v2::AudioCoreGatePhase::Capturing: return L"Capturing";
+            case ammod::audio_v2::AudioCoreGatePhase::Prebuffered: return L"Prebuffered";
+            case ammod::audio_v2::AudioCoreGatePhase::Active: return L"Active";
+            case ammod::audio_v2::AudioCoreGatePhase::Faulted: return L"Faulted";
+            }
+            return L"Unknown";
+        };
+        Log(L"audio core v2 activation gate phase=" + std::wstring(phaseName(stats.gatePhase)) +
+            L" sinkState=" + std::to_wstring(stats.sinkState) +
+            L" uiEnabled=" + std::to_wstring(stats.uiEnabled) +
+            L" graphBound=" + std::to_wstring(stats.graphBound) +
+            L" graphStarted=" + std::to_wstring(stats.graphStarted) +
+            L" nativeInitialized=" + std::to_wstring(stats.nativeInitialized) +
+            L" nativeStarted=" + std::to_wstring(stats.nativeStarted) +
+            L" userPauseIntent=" + std::to_wstring(stats.userPauseIntent) +
+            L" graphPaused=" + std::to_wstring(stats.graphPaused) +
+            L" graphControlPending=" + std::to_wstring(stats.graphControlPending) +
+            L" seekFence=" + std::to_wstring(stats.seekFence) +
+            L" bufferedFrames=" + std::to_wstring(stats.bufferedFrames) +
+            L" requiredPrebufferFrames=" + std::to_wstring(stats.requiredPrebufferFrames) +
+            L" graphRate=" + std::to_wstring(stats.graphRate) +
+            L" graphChannels=" + std::to_wstring(stats.graphChannels) +
+            L" graphSourceBits=" + std::to_wstring(stats.graphSourceBits) +
+            L" resumePrebufferPending=" + std::to_wstring(stats.resumePrebufferPending) +
+            L" resumeProducerPending=" + std::to_wstring(stats.resumeProducerPending) +
+            L" playbackStateAvailable=" + std::to_wstring(stats.playbackStateAvailable) +
+            L" streamingProducerDrainPending=" +
+                std::to_wstring(stats.streamingProducerDrainPending) +
+            L" endOfStreamDrainPending=" + std::to_wstring(stats.endOfStreamDrainPending) +
+            L" hasNativeClient=" + std::to_wstring(stats.hasNativeClient) +
+            L" hasNativeOutputUnit=" + std::to_wstring(stats.hasNativeOutputUnit) +
+            L" hasPrepareNativeHandoff=" + std::to_wstring(stats.hasPrepareNativeHandoff) +
+            L" nativeHandoffPending=" + std::to_wstring(stats.nativeHandoffPending) +
+            L" nativeGraphHandoffPending=" + std::to_wstring(stats.nativeGraphHandoffPending));
         Log(L"audio core v2 telemetry capturedFrames=" +
             std::to_wstring(stats.coordinator.capturedFrames) +
             L" acceptedFrames=" + std::to_wstring(tap.acceptedFrames) +
