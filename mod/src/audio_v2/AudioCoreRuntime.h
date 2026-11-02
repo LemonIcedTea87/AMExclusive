@@ -302,6 +302,7 @@ private:
     void TryBindGraphLocked() noexcept;
     void TryActivateLocked() noexcept;
     void TryResumePausedSinkLocked(bool requireFreshProducer = false) noexcept;
+    bool TryPromoteNativeResumeLocked() noexcept;
     void ExtendSeekQuietPeriodLocked() noexcept;
     bool DirectSelectionPending() const noexcept;
     bool RetireDirectSelectionLocked() noexcept;
