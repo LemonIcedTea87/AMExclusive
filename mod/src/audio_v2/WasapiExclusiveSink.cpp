@@ -727,6 +727,18 @@ DWORD WasapiExclusiveSink::RenderThreadMain() noexcept {
                     }
                     continue;
                 }
+                // A transient producer wait is more disruptive than an initial
+                // start: do not restart the endpoint on a single device period
+                // while a compressed stream is rebuilding its reservoir. Keep
+                // waitingForSource_ set so every subsequent producer push wakes
+                // this loop. A sealed source bypasses the threshold so a short
+                // terminal tail can still reach the device-clock drain.
+                if (ready == S_OK &&
+                    config_.sourceResumePrebufferFrames > bufferFrames_ &&
+                    !source_->IsEndOfStreamSealed() &&
+                    source_->AvailableFrames() < config_.sourceResumePrebufferFrames) {
+                    continue;
+                }
                 // Start-before-fill is restart recovery for a stopped,
                 // PREVIOUSLY RUN stream (the parked event/clock cycle above).
                 // A client that has never started this stream keeps the

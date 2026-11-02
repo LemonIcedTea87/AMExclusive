@@ -1896,6 +1896,12 @@ void AudioCoreRuntime::TryBindGraphLocked() noexcept {
     }
     config.sink.endpointId = nativeEndpoint_;
     config.sink.periodFrames = PeriodFrames(format.sampleRate);
+    // After a recoverable P0 starvation, rebuild the producer reservoir before
+    // restarting the exclusive device clock. Local/eager sources need only one
+    // full endpoint period. This does not affect the initial activation prebuffer.
+    config.sink.sourceResumePrebufferFrames = IsP0Converter(graphConverter_)
+        ? static_cast<std::uint32_t>(NativePumpLowWaterFrames(format.sampleRate))
+        : config.sink.periodFrames;
     config.sink.alignmentRetries = 3;
     config.sink.lifecycleContext = callbacks_.context;
     config.sink.onLifecycle = callbacks_.onSinkLifecycle;

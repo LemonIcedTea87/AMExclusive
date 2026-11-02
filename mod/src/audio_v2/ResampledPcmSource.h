@@ -30,6 +30,10 @@ public:
     HRESULT Prepare(std::uint32_t capacityFrames) noexcept override;
     bool CanProvide(std::uint32_t capacityFrames) const noexcept override;
     std::size_t AvailableFrames() const noexcept override;
+    bool IsEndOfStreamSealed() const noexcept override {
+        return outputEnded_ || streamEnded_ ||
+            (source_ && source_->IsEndOfStreamSealed());
+    }
     HRESULT Fill(std::int32_t* destination, std::uint32_t capacityFrames,
                  std::uint32_t& writtenFrames, bool& endOfStream) noexcept override;
 

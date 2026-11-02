@@ -62,6 +62,10 @@ public:
         return queued > blockOffsetFrames_ ? queued - blockOffsetFrames_ : 0;
     }
 
+    bool IsEndOfStreamSealed() const noexcept override {
+        return ended_ || queue_.EndOfStreamSealed();
+    }
+
     HRESULT Fill(std::int32_t* destination, std::uint32_t capacityFrames,
                  std::uint32_t& writtenFrames, bool& endOfStream) noexcept override {
         return FillInternal(destination, capacityFrames, writtenFrames, endOfStream, false);

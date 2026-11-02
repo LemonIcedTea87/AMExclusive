@@ -44,6 +44,10 @@ struct WasapiSinkConfig final {
     // One zero-filled device period before the first media packet. Opt-in
     // for an endpoint rebuilt after pause; never consume/drop source frames.
     bool primeWithSilence{};
+    // Minimum pending output frames before restarting after recoverable source
+    // starvation. This applies only to the source-wait recovery path, not the
+    // initial stream start. Zero preserves period-only recovery behavior.
+    std::uint32_t sourceResumePrebufferFrames{};
     // Non-owning producer notification. The coordinator owns this handle and
     // keeps it valid until the sink has stopped and closed.
     HANDLE sourceReadyEvent{};

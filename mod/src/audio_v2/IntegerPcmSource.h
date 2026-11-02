@@ -38,6 +38,10 @@ public:
     // Prepare() before Fill(); the render thread never drives the producer.
     virtual std::size_t AvailableFrames() const noexcept { return SIZE_MAX; }
 
+    // True once the producer has sealed this generation. The endpoint may
+    // bypass recovery prebuffering for a finite terminal tail.
+    virtual bool IsEndOfStreamSealed() const noexcept { return false; }
+
     // The sink always asks for a complete endpoint buffer. A source may return
     // fewer frames only when endOfStream is true. It may return
     // kAudioSourceWouldBlock when waiting for more decoded media; the sink
