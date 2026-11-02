@@ -2224,6 +2224,15 @@ AppleOSStatus __cdecl HookV2AudioConverterNew(const AudioStreamBasicDescription*
     if (ammod::ProcessExiting()) return g_v2OriginalAudioConverterNew ? g_v2OriginalAudioConverterNew(source, destination, converter) : -1;
     const auto result = g_v2OriginalAudioConverterNew
         ? g_v2OriginalAudioConverterNew(source, destination, converter) : -1;
+    if (result != 0 && g_audioCoreRuntime.UiEnabled()) {
+        Log(L"v2 AudioConverterNew failed result=" + std::to_wstring(result) +
+            L" sourceFormat=" + AppleFormatIdText(source ? source->mFormatID : 0) +
+            L" destinationFormat=" + AppleFormatIdText(destination ? destination->mFormatID : 0) +
+            L" sourcePtr=" + std::to_wstring(reinterpret_cast<std::uintptr_t>(source)) +
+            L" destinationPtr=" + std::to_wstring(reinterpret_cast<std::uintptr_t>(destination)) +
+            L" converterOut=" + std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
+            L" qpc=" + std::to_wstring(CurrentQpc()));
+    }
     if (result == 0 && converter && *converter &&
         g_nativeTraceEnabled.load(std::memory_order_acquire)) {
         Log(L"native trace AudioConverterNew converter=" +
@@ -2262,6 +2271,14 @@ AppleOSStatus __cdecl HookV2AudioConverterNewSpecific(
     const auto result = g_v2OriginalAudioConverterNewSpecific
         ? g_v2OriginalAudioConverterNewSpecific(source, destination, classDescriptionCount,
                                                  classDescriptions, converter) : -1;
+    if (result != 0 && g_audioCoreRuntime.UiEnabled()) {
+        Log(L"v2 AudioConverterNewSpecific failed result=" + std::to_wstring(result) +
+            L" classDescriptions=" + std::to_wstring(classDescriptionCount) +
+            L" sourceFormat=" + AppleFormatIdText(source ? source->mFormatID : 0) +
+            L" destinationFormat=" + AppleFormatIdText(destination ? destination->mFormatID : 0) +
+            L" converterOut=" + std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
+            L" qpc=" + std::to_wstring(CurrentQpc()));
+    }
     if (result == 0 && converter && *converter &&
         g_nativeTraceEnabled.load(std::memory_order_acquire)) {
         Log(L"native trace AudioConverterNewSpecific converter=" +
@@ -2812,6 +2829,16 @@ AppleOSStatus __cdecl HookV2AudioUnitSetProperty(void* unit, std::uint32_t prope
     const auto result = g_v2OriginalAudioUnitSetProperty
         ? g_v2OriginalAudioUnitSetProperty(unit, propertyId, scope, element, data, dataSize)
         : -1;
+    if (result != 0 && g_audioCoreRuntime.UiEnabled()) {
+        Log(L"v2 AudioUnitSetProperty failed unit=" +
+            std::to_wstring(reinterpret_cast<std::uintptr_t>(unit)) +
+            L" property=0x" + HResultText(static_cast<HRESULT>(propertyId)).substr(2) +
+            L" scope=" + std::to_wstring(scope) +
+            L" element=" + std::to_wstring(element) +
+            L" dataSize=" + std::to_wstring(dataSize) +
+            L" result=" + std::to_wstring(result) +
+            L" qpc=" + std::to_wstring(CurrentQpc()));
+    }
     if (result != 0 || !g_audioCoreRuntime.UiEnabled() || propertyId != 8 || scope != 1 ||
         !data || dataSize < sizeof(AudioStreamBasicDescription)) {
         return result;
@@ -3013,6 +3040,12 @@ AppleOSStatus __cdecl HookV2AudioUnitInitialize(void* unit) {
     if (ammod::ProcessExiting()) return g_v2OriginalAudioUnitInitialize ? g_v2OriginalAudioUnitInitialize(unit) : -1;
     const auto result = g_v2OriginalAudioUnitInitialize
         ? g_v2OriginalAudioUnitInitialize(unit) : -1;
+    if (result != 0 && g_audioCoreRuntime.UiEnabled()) {
+        Log(L"v2 AudioUnitInitialize failed unit=" +
+            std::to_wstring(reinterpret_cast<std::uintptr_t>(unit)) +
+            L" result=" + std::to_wstring(result) +
+            L" qpc=" + std::to_wstring(CurrentQpc()));
+    }
     if (result == 0 && g_audioCoreRuntime.UiEnabled()) {
         AudioUnitInputFormatState remembered{};
         const bool hasRemembered = FindAudioUnitInputFormat(unit, remembered) &&
