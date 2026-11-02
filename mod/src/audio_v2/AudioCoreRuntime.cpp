@@ -27,6 +27,21 @@ constexpr std::uint64_t NativePumpLowWaterFrames(std::uint32_t sampleRate) noexc
     return (static_cast<std::uint64_t>(sampleRate) * 3u) / 10u;
 }
 
+// The UI click handler stamps legacy play/pause intents with QPC. Apple can
+// restart its native client from that click before the intent traverses IPC;
+// compare the original click time with the native Start time so the delayed
+// echo is not mistaken for a second click that pauses the newly resumed sink.
+bool IsRecentTransportGestureBeforeNativeRestart(
+    std::uint64_t gestureQpc, std::uint64_t nativeStartQpc) noexcept {
+    if (gestureQpc == 0 || nativeStartQpc < gestureQpc) return false;
+    LARGE_INTEGER frequency{};
+    if (!QueryPerformanceFrequency(&frequency) || frequency.QuadPart <= 0) return false;
+    constexpr std::uint64_t kGestureWindowMs = 750;
+    const auto maxDelta =
+        (static_cast<std::uint64_t>(frequency.QuadPart) * kGestureWindowMs) / 1000u;
+    return nativeStartQpc - gestureQpc <= maxDelta;
+}
+
 bool IsLossyAacFormat(std::uint32_t formatId) noexcept {
     return formatId == kQaac;
 }
@@ -88,6 +103,8 @@ bool AudioCoreRuntime::Start(const AudioCoreRuntimeCallbacks& callbacks) noexcep
     seekFenceReleaseTick_ = 0;
     streamingProducerDrainPending_ = false;
     streamingProducerDrainConverter_ = nullptr;
+    streamingRestartNativeStartQpc_ = 0;
+    streamingEofCandidateConverter_ = nullptr;
     streamingEofCandidateConverter_.store(nullptr, std::memory_order_release);
     endOfStreamDrainPending_ = false;
     endOfStreamDrainConverter_ = nullptr;
@@ -240,6 +257,18 @@ void AudioCoreRuntime::OnTransportPlayPause(std::uint64_t revision) noexcept {
     if (latestPlaybackStateRevision_ != 0 &&
         (revision == 0 || revision <= latestPlaybackStateRevision_)) return;
     if (revision != 0) latestPlaybackStateRevision_ = revision;
+
+    // This click may have caused Apple's native Start already. Its IPC
+    // notification can arrive a few milliseconds later while the old sink
+    // still reports Running; consume that matching echo instead of turning
+    // Play into Pause. A later click has a QPC newer than native Start.
+    const auto restartQpc = streamingRestartNativeStartQpc_;
+    streamingRestartNativeStartQpc_ = 0;
+    if (!userPauseIntent_ &&
+        IsRecentTransportGestureBeforeNativeRestart(revision, restartQpc)) {
+        Wake();
+        return;
+    }
 
     const auto phase = coordinator_.Phase();
     const bool activeSinkPlayback = phase == AudioCoreGatePhase::Active &&
@@ -1134,10 +1163,16 @@ void AudioCoreRuntime::OnNativeClientStarted(void* client, HRESULT result) noexc
     // a later zero-packet Fill becomes a provisional EOF candidate and still
     // needs the normal subsequent Stop handshake before the tail is sealed.
     const auto boundConverter = boundConverter_.load(std::memory_order_acquire);
+    streamingRestartNativeStartQpc_ = 0;
     if (!endOfStreamDrainPending_ && streamingProducerDrainPending_ &&
         streamingProducerDrainConverter_ && graphUnit_ &&
         streamingProducerDrainConverter_ == boundConverter &&
         streamingProducerDrainConverter_ == graphConverter_) {
+        LARGE_INTEGER nativeStartQpc{};
+        if (QueryPerformanceCounter(&nativeStartQpc) && nativeStartQpc.QuadPart > 0) {
+            streamingRestartNativeStartQpc_ =
+                static_cast<std::uint64_t>(nativeStartQpc.QuadPart);
+        }
         streamingProducerDrainPending_ = false;
         streamingProducerDrainConverter_ = nullptr;
     }
@@ -2156,6 +2191,7 @@ void AudioCoreRuntime::RetireCaptureLocked(bool keepGraph, bool keepPendingCaptu
     graphControlPending_ = false;
     streamingProducerDrainPending_ = false;
     streamingProducerDrainConverter_ = nullptr;
+    streamingRestartNativeStartQpc_ = 0;
     streamingEofCandidateConverter_.store(nullptr, std::memory_order_release);
     endOfStreamDrainPending_ = false;
     endOfStreamDrainConverter_ = nullptr;
