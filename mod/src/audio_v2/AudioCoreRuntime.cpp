@@ -290,8 +290,14 @@ void AudioCoreRuntime::OnTransportPlayPause(std::uint64_t revision) noexcept {
     }
 
     // A second legacy toggle while a pause is latched is the resume action.
+    // An earlier Native Start may have armed the implicit-resume watermark
+    // before this explicit Play IPC arrived. The explicit toggle is authoritative;
+    // discard that stale watermark, then let the active/open resume path establish
+    // a fresh one if it still needs producer confirmation.
     userPauseIntent_ = false;
     nativeStartedAfterUserPause_ = false;
+    resumeProducerPending_ = false;
+    resumeProducerFrames_ = 0;
     TryResumePausedSinkLocked(true);
     Wake();
 }
