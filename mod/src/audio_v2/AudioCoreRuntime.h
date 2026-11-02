@@ -104,9 +104,11 @@ struct AudioCoreRuntimeStats final {
     std::uint32_t gatePhase{}, sinkState{};
     std::uint32_t graphRate{}, graphChannels{}, graphSourceBits{};
     std::uint32_t requiredPrebufferFrames{};
+    std::uint64_t resumeProducerFrames{};
     bool uiEnabled{}, graphBound{}, graphStarted{};
     bool graphPaused{}, graphControlPending{}, userPauseIntent{};
-    bool resumePrebufferPending{}, resumeProducerPending{}, seekFence{};
+    bool resumePrebufferPending{}, resumeProducerPending{};
+    bool resumeProducerProgressObserved{}, seekFence{};
     bool nativeInitialized{}, nativeStarted{}, playbackStateAvailable{};
     bool streamingProducerDrainPending{}, endOfStreamDrainPending{};
     bool hasNativeClient{}, hasNativeOutputUnit{}, hasPrepareNativeHandoff{};
@@ -373,6 +375,7 @@ private:
     bool resumePrebufferPending_{};
     bool resumeProducerPending_{};
     std::uint64_t resumeProducerFrames_{};
+    bool resumeProducerProgressObserved_{};
     bool nativeStartedAfterUserPause_{};
     std::uint64_t latestPlaybackStateRevision_{};
     bool playbackStateAvailable_{};

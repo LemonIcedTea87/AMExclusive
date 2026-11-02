@@ -93,6 +93,7 @@ bool AudioCoreRuntime::Start(const AudioCoreRuntimeCallbacks& callbacks) noexcep
     resumePrebufferPending_ = false;
     resumeProducerPending_ = false;
     resumeProducerFrames_ = 0;
+    resumeProducerProgressObserved_ = false;
     nativeStartedAfterUserPause_ = false;
     latestPlaybackStateRevision_ = 0;
     playbackStateAvailable_ = false;
@@ -287,6 +288,8 @@ void AudioCoreRuntime::OnTransportPlayPause(std::uint64_t revision) noexcept {
         userPauseIntent_ = true;
         resumePrebufferPending_ = false;
         resumeProducerPending_ = false;
+        resumeProducerFrames_ = 0;
+        resumeProducerProgressObserved_ = false;
         nativeStartedAfterUserPause_ = false;
         if (activeSinkPlayback) coordinator_.PauseEndpoint();
         // Pair the pre-toggle snapshot with the state after PauseEndpoint.
@@ -304,6 +307,7 @@ void AudioCoreRuntime::OnTransportPlayPause(std::uint64_t revision) noexcept {
     nativeStartedAfterUserPause_ = false;
     resumeProducerPending_ = false;
     resumeProducerFrames_ = 0;
+    resumeProducerProgressObserved_ = false;
     TryResumePausedSinkLocked(true);
     // Records whether the explicit resume could start immediately or is waiting
     // for fresh producer PCM / the normal prebuffer threshold.
@@ -338,6 +342,8 @@ void AudioCoreRuntime::OnTransportPlaybackState(std::uint64_t revision, bool pla
         userPauseIntent_ = true;
         resumePrebufferPending_ = false;
         resumeProducerPending_ = false;
+        resumeProducerFrames_ = 0;
+        resumeProducerProgressObserved_ = false;
         coordinator_.PauseEndpoint();
         return;
     }
@@ -1207,6 +1213,7 @@ void AudioCoreRuntime::OnNativeClientStarted(void* client, HRESULT result) noexc
         // successful native Start can serve as the missing Resume indication.
         nativeStartedAfterUserPause_ = true;
         resumeProducerFrames_ = resumeStartFrames;
+        resumeProducerProgressObserved_ = false;
         if (IsP0Converter(boundConverter_.load(std::memory_order_acquire)))
             resumeProducerPending_ = true;
     }
@@ -1817,6 +1824,8 @@ AudioCoreRuntimeStats AudioCoreRuntime::StatsLocked() const noexcept {
     stats.userPauseIntent = userPauseIntent_;
     stats.resumePrebufferPending = resumePrebufferPending_;
     stats.resumeProducerPending = resumeProducerPending_;
+    stats.resumeProducerFrames = resumeProducerFrames_;
+    stats.resumeProducerProgressObserved = resumeProducerProgressObserved_;
     stats.seekFence = seekFence_;
     stats.nativeInitialized = nativeInitialized_;
     stats.nativeStarted = nativeStarted_;
@@ -1963,6 +1972,7 @@ void AudioCoreRuntime::TryBindGraphLocked() noexcept {
     if (userPauseIntent_ && !playbackStateAvailable_ &&
         nativeStartedAfterUserPause_ && IsP0Converter(graphConverter_)) {
         resumeProducerPending_ = true;
+        resumeProducerProgressObserved_ = false;
     }
     if (!PromotePendingPcmLocked(graphConverter_)) {
         const HRESULT error = E_OUTOFMEMORY;
@@ -2000,7 +2010,12 @@ bool AudioCoreRuntime::TryPromoteNativeResumeLocked() noexcept {
     // A Start alone is not enough: the producer must have delivered new PCM
     // after it. This prevents graph/client initialization while still paused
     // from releasing the user's pause latch.
-    if (tap_.Stats().acceptedFrames <= resumeProducerFrames_) return false;
+    const auto acceptedFrames = tap_.Stats().acceptedFrames;
+    if (!resumeProducerProgressObserved_ && acceptedFrames > resumeProducerFrames_) {
+        resumeProducerProgressObserved_ = true;
+        Emit(AudioCoreRuntimeEvent::Telemetry, S_OK);
+    }
+    if (acceptedFrames <= resumeProducerFrames_) return false;
 
     userPauseIntent_ = false;
     resumeProducerPending_ = false;
@@ -2028,6 +2043,8 @@ void AudioCoreRuntime::TryResumePausedSinkLocked(bool requireFreshProducer) noex
         observedPlaybackItem_ != pausedPlaybackItem_) {
         resumePrebufferPending_ = false;
         resumeProducerPending_ = false;
+        resumeProducerFrames_ = 0;
+        resumeProducerProgressObserved_ = false;
         return;
     }
     if (requireFreshProducer) {
@@ -2038,6 +2055,14 @@ void AudioCoreRuntime::TryResumePausedSinkLocked(bool requireFreshProducer) noex
         // may have no later callback and does not use this compressed-P0 fence.
         resumeProducerPending_ = IsP0Converter(boundConverter_.load(std::memory_order_acquire));
         resumeProducerFrames_ = tap_.Stats().acceptedFrames;
+        resumeProducerProgressObserved_ = false;
+    }
+    const auto acceptedFrames = tap_.Stats().acceptedFrames;
+    if (resumeProducerPending_ && !resumeProducerProgressObserved_ &&
+        acceptedFrames > resumeProducerFrames_) {
+        resumeProducerProgressObserved_ = true;
+        // Emit once at the first newly accepted P0 PCM after the resume watermark.
+        Emit(AudioCoreRuntimeEvent::Telemetry, S_OK);
     }
     const bool terminal = endOfStreamDrainPending_ || coordinator_.EndOfStreamSubmitted();
     if (!terminal && (!graphStarted_ || !nativeStarted_)) return;
@@ -2270,6 +2295,7 @@ void AudioCoreRuntime::RetireCaptureLocked(bool keepGraph, bool keepPendingCaptu
     resumePrebufferPending_ = false;
     resumeProducerPending_ = false;
     resumeProducerFrames_ = 0;
+    resumeProducerProgressObserved_ = false;
     nativeStartedAfterUserPause_ = false;
     pendingGraphBind_ = {};
     if (!keepPendingCapture) ClearPendingCaptureLocked();

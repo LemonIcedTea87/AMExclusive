@@ -81,6 +81,7 @@ std::atomic<std::uint64_t> g_transportEpoch{};
 std::atomic<std::uint64_t> g_activeSeekEpoch{};
 std::atomic<std::uintptr_t> g_activeSeekOwner{};
 std::atomic<ULONGLONG> g_lastSkipPointerTick{};
+thread_local ULONGLONG g_lastPlayPausePointerTick{};
 std::deque<Message> g_transportPending;
 // Weak XAML controls must only be resolved on their owning UI thread.
 thread_local std::vector<ObserverRef> g_transportButtonObservers;
@@ -1548,9 +1549,22 @@ void AttachTransportObservers(const Xaml::Window& window, const std::wstring& wi
             for (const auto& node : playPauseNodes) {
                 if (auto button = node.try_as<Primitives::ButtonBase>();
                     button && RememberObserver(g_transportButtonObservers, button)) {
+                    button.AddHandler(
+                        Xaml::UIElement::PointerPressedEvent(),
+                        box_value(Input::PointerEventHandler([](auto&&, auto&&) {
+                            g_lastPlayPausePointerTick = GetTickCount64();
+                        })), true);
                     button.Click([](auto&&, auto&&) {
-                        if (!g_playbackObserverOwner.load())
+                        const auto now = GetTickCount64();
+                        const auto pointerTick = g_lastPlayPausePointerTick;
+                        g_lastPlayPausePointerTick = 0;
+                        const bool pointerActivation = pointerTick != 0 &&
+                            now >= pointerTick && now - pointerTick <= 1000;
+                        if (!g_playbackObserverOwner.load()) {
+                            Log(L"transport activation kind=" +
+                                std::wstring(pointerActivation ? L"pointer" : L"non_pointer"));
                             QueueTransport(L"play_pause", PlaybackRevision());
+                        }
                     });
                 }
             }

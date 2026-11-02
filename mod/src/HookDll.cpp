@@ -1939,6 +1939,9 @@ void AudioCoreRuntimeEventCallback(void*, const ammod::audio_v2::AudioCoreRuntim
             L" graphSourceBits=" + std::to_wstring(stats.graphSourceBits) +
             L" resumePrebufferPending=" + std::to_wstring(stats.resumePrebufferPending) +
             L" resumeProducerPending=" + std::to_wstring(stats.resumeProducerPending) +
+            L" resumeProducerFrames=" + std::to_wstring(stats.resumeProducerFrames) +
+            L" resumeProducerProgressObserved=" +
+                std::to_wstring(stats.resumeProducerProgressObserved) +
             L" playbackStateAvailable=" + std::to_wstring(stats.playbackStateAvailable) +
             L" streamingProducerDrainPending=" +
                 std::to_wstring(stats.streamingProducerDrainPending) +
