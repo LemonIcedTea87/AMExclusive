@@ -240,16 +240,28 @@ void AudioCoreRuntime::OnTransportPlayPause(std::uint64_t revision) noexcept {
     if (latestPlaybackStateRevision_ != 0 &&
         (revision == 0 || revision <= latestPlaybackStateRevision_)) return;
     if (revision != 0) latestPlaybackStateRevision_ = revision;
-    if (coordinator_.Phase() == AudioCoreGatePhase::Active &&
-        (coordinator_.SinkState() == WasapiSinkState::Running || resumePrebufferPending_)) {
+
+    const auto phase = coordinator_.Phase();
+    const bool activeSinkPlayback = phase == AudioCoreGatePhase::Active &&
+        (coordinator_.SinkState() == WasapiSinkState::Running || resumePrebufferPending_);
+    // The legacy UI event carries only a toggle, not the resulting PlayerState.
+    // During Capturing, Apple's graph/client may already be running even though
+    // the replacement WASAPI sink has not started yet. Treat that as playback
+    // in progress, otherwise a pause click clears the pause gate and lets
+    // TryActivateLocked() open the exclusive endpoint after the click.
+    const bool capturingNativePlayback = phase == AudioCoreGatePhase::Capturing &&
+        graphStarted_ && nativeStarted_;
+    if (!userPauseIntent_ && (activeSinkPlayback || capturingNativePlayback)) {
         userPauseIntent_ = true;
         resumePrebufferPending_ = false;
         resumeProducerPending_ = false;
         nativeStartedAfterUserPause_ = false;
-        coordinator_.PauseEndpoint();
+        if (activeSinkPlayback) coordinator_.PauseEndpoint();
+        Wake();
         return;
     }
 
+    // A second legacy toggle while a pause is latched is the resume action.
     userPauseIntent_ = false;
     nativeStartedAfterUserPause_ = false;
     TryResumePausedSinkLocked(true);
