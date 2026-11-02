@@ -1155,31 +1155,35 @@ void AudioCoreRuntime::OnNativeClientStarted(void* client, HRESULT result) noexc
     nativeStarted_ = true;
     if (userPauseIntent_ || resumeProducerPending_) nativeStartedAfterUserPause_ = true;
 
-    // A fresh native scheduler start on the same still-bound P0 converter
-    // proves that the preceding Native Stop was only a transient scheduler
-    // edge. Do not let a delayed zero-packet Fill from that old stop seal the
-    // generation after playback has already resumed. With the fence cleared,
-    // a later zero-packet Fill becomes a provisional EOF candidate and still
-    // needs the normal subsequent Stop handshake before the tail is sealed.
+    // A native Start can arrive after Apple's graph has selected a different
+    // converter while the old bound P0 generation is still awaiting its EOF.
+    // The old endpoint must not resume from cached frames in that case: require
+    // fresh output from the still-bound producer before allowing its queue to
+    // run. Keep the drain marker until that producer reaches EOF/disposal so a
+    // genuinely new graph remains deferred behind the old generation.
     const auto boundConverter = boundConverter_.load(std::memory_order_acquire);
     streamingRestartNativeStartQpc_ = 0;
-    bool resumedStreamingStop = false;
+    bool resumedBoundStreamingStop = false;
     if (!endOfStreamDrainPending_ && streamingProducerDrainPending_ &&
         streamingProducerDrainConverter_ && graphUnit_ &&
-        streamingProducerDrainConverter_ == boundConverter &&
-        streamingProducerDrainConverter_ == graphConverter_) {
+        streamingProducerDrainConverter_ == boundConverter) {
         LARGE_INTEGER nativeStartQpc{};
         if (QueryPerformanceCounter(&nativeStartQpc) && nativeStartQpc.QuadPart > 0) {
             streamingRestartNativeStartQpc_ =
                 static_cast<std::uint64_t>(nativeStartQpc.QuadPart);
         }
-        streamingProducerDrainPending_ = false;
-        streamingProducerDrainConverter_ = nullptr;
-        resumedStreamingStop = true;
+        resumedBoundStreamingStop = true;
+        // Only clear the marker when this is the exact same P0 generation.
+        // A different graph candidate is held in pendingGraphBind_ until the
+        // old converter completes, while the old source must prove it resumed.
+        if (streamingProducerDrainConverter_ == graphConverter_) {
+            streamingProducerDrainPending_ = false;
+            streamingProducerDrainConverter_ = nullptr;
+        }
     }
 
     TryBindGraphLocked();
-    if (!userPauseIntent_) TryResumePausedSinkLocked(resumedStreamingStop);
+    if (!userPauseIntent_) TryResumePausedSinkLocked(resumedBoundStreamingStop);
     if (!userPauseIntent_ && playbackStateAvailable_ && observedPlaybackItem_ != 0 &&
         observedPlaybackItem_ == pausedPlaybackItem_ &&
         coordinator_.SinkState() == WasapiSinkState::Running)
