@@ -397,6 +397,10 @@ private:
     // the still-live P0 converter to producedPackets==0.
     bool streamingProducerDrainPending_{};
     void* streamingProducerDrainConverter_{};
+    // QPC of a native Start that cleared a pending streaming producer drain.
+    // Used to correlate the UI click that initiated this restart with its
+    // later IPC delivery; guarded by controlMutex_.
+    std::uint64_t streamingRestartNativeStartQpc_{};
     // A successful streaming P0 Fill with zero packets is only an EOF
     // candidate until Apple either stops the native scheduler (true natural
     // EOF) or produces more PCM on the same converter (Repeat One / loop).
