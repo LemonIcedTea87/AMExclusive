@@ -354,6 +354,10 @@ private:
     bool pendingProducerLeaseHeld_{};
 
     std::atomic<std::uint32_t> callbackDepth_{};
+    // QPC of the latest accepted frame block from the bound compressed P0
+    // producer. Compared with UI transport QPC to retain PCM that arrived
+    // after the click but before its IPC reached the runtime thread.
+    std::atomic<std::uint64_t> lastAcceptedP0Qpc_{};
     std::atomic<void*> boundConverter_{};
     std::atomic<void*> nativeClient_{};
     std::atomic<bool> nativeHandoffPending_{};
@@ -375,6 +379,9 @@ private:
     bool resumePrebufferPending_{};
     bool resumeProducerPending_{};
     std::uint64_t resumeProducerFrames_{};
+    // UI click QPC for an explicit resume; zero keeps the native-start fallback
+    // watermark semantics when no explicit transport timestamp is available.
+    std::uint64_t resumeProducerIntentQpc_{};
     bool resumeProducerProgressObserved_{};
     bool nativeStartedAfterUserPause_{};
     std::uint64_t latestPlaybackStateRevision_{};
