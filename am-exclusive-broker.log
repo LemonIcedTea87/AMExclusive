@@ -38,3 +38,8 @@
 2026-11-03T03:20:01.596 uptimeMs=93632296 pid=2232 tid=19872 async broadcast complete pid=27460 ok=1
 2026-11-03T03:20:22.779 uptimeMs=93653468 pid=2232 tid=6604 handle type=9 role=2
 2026-11-03T03:20:22.779 uptimeMs=93653468 pid=2232 tid=6604 role relay pid=25460 role=3 ok=1
+2026-11-03T03:24:28.428 uptimeMs=93899125 pid=2232 tid=3144 handle type=5 role=3
+2026-11-03T03:24:28.428 uptimeMs=93899125 pid=2232 tid=3144 source reply begin pid=25460
+2026-11-03T03:24:28.429 uptimeMs=93899125 pid=2232 tid=3144 source reply complete pid=25460 ok=1
+2026-11-03T03:24:28.429 uptimeMs=93899125 pid=2232 tid=12924 async broadcast begin pid=27460
+2026-11-03T03:24:28.429 uptimeMs=93899125 pid=2232 tid=12924 async broadcast complete pid=27460 ok=1
