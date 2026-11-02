@@ -1,35 +1,60 @@
-2026-11-03T04:54:16.286 pid=2336 tid=15376 UI adapter loaded
-2026-11-03T04:54:16.286 pid=2336 tid=15376 UI window lifecycle WinEvent hook=828638495
-2026-11-03T04:54:16.286 pid=2336 tid=13888 UI broker IPC connected
-2026-11-03T04:54:16.522 pid=2336 tid=18900 UI dispatcher bound window=MainWindow
-2026-11-03T04:54:16.523 pid=2336 tid=18900 Apple player observation failed stage=Player::PlayerState IPlayer QueryInterface hr=0x80004002
-2026-11-03T04:54:16.543 pid=2336 tid=18900 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=206 hosts=9 maxRefreshMs=16
-2026-11-03T04:54:21.773 pid=2336 tid=18900 UI work window=MainWindow refreshes=3 routeScans=3 transportScans=3 routeNodes=245 hosts=10 maxRefreshMs=63
-2026-11-03T04:54:28.101 pid=2336 tid=18900 UI work window=MainWindow refreshes=6 routeScans=5 transportScans=6 routeNodes=250 hosts=10 maxRefreshMs=62
-2026-11-03T04:54:36.358 pid=2336 tid=18900 UI work window=MainWindow refreshes=7 routeScans=6 transportScans=7 routeNodes=297 hosts=10 maxRefreshMs=78
-2026-11-03T04:54:41.363 pid=2336 tid=18900 UI work window=MainWindow refreshes=3 routeScans=2 transportScans=3 routeNodes=297 hosts=10 maxRefreshMs=62
-2026-11-03T04:54:47.216 pid=2336 tid=18900 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=297 hosts=10 maxRefreshMs=63
-2026-11-03T04:54:47.530 pid=2336 tid=18900 transport activation kind=pointer
-2026-11-03T04:54:47.532 pid=2336 tid=18900 transport sent immediate action=play_pause epoch=993187650895
-2026-11-03T04:54:48.763 pid=2336 tid=18900 transport activation kind=pointer
-2026-11-03T04:54:48.763 pid=2336 tid=18900 transport sent immediate action=play_pause epoch=993199969453
-2026-11-03T04:54:55.687 pid=2336 tid=18900 UI work window=MainWindow refreshes=6 routeScans=4 transportScans=6 routeNodes=297 hosts=10 maxRefreshMs=78
-2026-11-03T04:55:01.370 pid=2336 tid=18900 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=297 hosts=10 maxRefreshMs=62
-2026-11-03T04:55:06.367 pid=2336 tid=18900 UI work window=MainWindow refreshes=3 routeScans=3 transportScans=3 routeNodes=297 hosts=10 maxRefreshMs=62
-2026-11-03T04:55:11.377 pid=2336 tid=18900 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=63
-2026-11-03T04:55:16.387 pid=2336 tid=18900 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=297 hosts=10 maxRefreshMs=63
-2026-11-03T04:55:21.383 pid=2336 tid=18900 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=63
-2026-11-03T04:55:21.739 pid=2336 tid=18900 transport activation kind=pointer
-2026-11-03T04:55:21.739 pid=2336 tid=18900 transport sent immediate action=play_pause epoch=993529731367
-2026-11-03T04:55:22.974 pid=2336 tid=18900 transport activation kind=pointer
-2026-11-03T04:55:22.975 pid=2336 tid=18900 transport sent immediate action=play_pause epoch=993542088631
-2026-11-03T04:55:26.377 pid=2336 tid=18900 UI work window=MainWindow refreshes=5 routeScans=3 transportScans=5 routeNodes=297 hosts=10 maxRefreshMs=78
-2026-11-03T04:55:36.376 pid=2336 tid=18900 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=297 hosts=10 maxRefreshMs=47
-2026-11-03T04:55:41.381 pid=2336 tid=18900 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=297 hosts=10 maxRefreshMs=63
-2026-11-03T04:55:46.377 pid=2336 tid=18900 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=297 hosts=10 maxRefreshMs=63
-2026-11-03T04:55:51.389 pid=2336 tid=18900 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=297 hosts=10 maxRefreshMs=78
-2026-11-03T04:55:56.381 pid=2336 tid=18900 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=63
-2026-11-03T04:56:01.391 pid=2336 tid=18900 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=63
-2026-11-03T04:56:06.388 pid=2336 tid=18900 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=63
-2026-11-03T04:56:11.380 pid=2336 tid=18900 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=63
-2026-11-03T04:56:16.393 pid=2336 tid=18900 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=78
+2026-11-03T05:09:58.341 pid=27004 tid=10916 UI adapter loaded
+2026-11-03T05:09:58.343 pid=27004 tid=10916 UI window lifecycle WinEvent hook=967183537
+2026-11-03T05:09:58.343 pid=27004 tid=31460 UI broker IPC connected
+2026-11-03T05:09:58.623 pid=27004 tid=16476 UI dispatcher bound window=MainWindow
+2026-11-03T05:09:58.626 pid=27004 tid=16476 Apple player observation failed stage=Player::PlayerState IPlayer QueryInterface hr=0x80004002
+2026-11-03T05:09:58.640 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=206 hosts=9 maxRefreshMs=16
+2026-11-03T05:10:03.885 pid=27004 tid=16476 UI work window=MainWindow refreshes=6 routeScans=6 transportScans=6 routeNodes=244 hosts=9 maxRefreshMs=78
+2026-11-03T05:10:13.400 pid=27004 tid=16476 UI work window=MainWindow refreshes=5 routeScans=5 transportScans=5 routeNodes=244 hosts=9 maxRefreshMs=47
+2026-11-03T05:10:18.423 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=244 hosts=9 maxRefreshMs=63
+2026-11-03T05:10:23.432 pid=27004 tid=16476 UI work window=MainWindow refreshes=10 routeScans=9 transportScans=10 routeNodes=250 hosts=10 maxRefreshMs=63
+2026-11-03T05:10:28.444 pid=27004 tid=16476 UI work window=MainWindow refreshes=12 routeScans=8 transportScans=12 routeNodes=297 hosts=10 maxRefreshMs=94
+2026-11-03T05:10:34.613 pid=27004 tid=16476 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=297 hosts=10 maxRefreshMs=63
+2026-11-03T05:10:39.761 pid=27004 tid=16476 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=297 hosts=10 maxRefreshMs=63
+2026-11-03T05:10:42.630 pid=27004 tid=16476 transport activation kind=pointer
+2026-11-03T05:10:42.631 pid=27004 tid=16476 transport sent immediate action=play_pause epoch=1002738647068
+2026-11-03T05:10:44.085 pid=27004 tid=16476 transport activation kind=pointer
+2026-11-03T05:10:44.086 pid=27004 tid=16476 transport sent immediate action=play_pause epoch=1002753195243
+2026-11-03T05:10:48.432 pid=27004 tid=16476 UI work window=MainWindow refreshes=7 routeScans=5 transportScans=7 routeNodes=297 hosts=10 maxRefreshMs=63
+2026-11-03T05:10:53.424 pid=27004 tid=16476 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=297 hosts=10 maxRefreshMs=63
+2026-11-03T05:10:58.424 pid=27004 tid=16476 UI work window=MainWindow refreshes=3 routeScans=3 transportScans=3 routeNodes=297 hosts=10 maxRefreshMs=63
+2026-11-03T05:11:03.428 pid=27004 tid=16476 UI work window=MainWindow refreshes=3 routeScans=2 transportScans=3 routeNodes=297 hosts=10 maxRefreshMs=63
+2026-11-03T05:11:08.429 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=63
+2026-11-03T05:11:13.432 pid=27004 tid=16476 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=297 hosts=10 maxRefreshMs=63
+2026-11-03T05:11:18.426 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=63
+2026-11-03T05:11:23.431 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=63
+2026-11-03T05:11:28.434 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=63
+2026-11-03T05:11:33.435 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=63
+2026-11-03T05:11:38.431 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=47
+2026-11-03T05:11:43.428 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=47
+2026-11-03T05:11:48.435 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=47
+2026-11-03T05:11:53.438 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=47
+2026-11-03T05:11:58.434 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=47
+2026-11-03T05:12:03.437 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=47
+2026-11-03T05:12:08.438 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=47
+2026-11-03T05:12:13.440 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=62
+2026-11-03T05:12:18.439 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=62
+2026-11-03T05:12:23.442 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=62
+2026-11-03T05:12:28.445 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=62
+2026-11-03T05:12:33.439 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=62
+2026-11-03T05:12:38.440 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=62
+2026-11-03T05:12:43.440 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=62
+2026-11-03T05:12:48.445 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=62
+2026-11-03T05:12:53.445 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=62
+2026-11-03T05:12:58.447 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=62
+2026-11-03T05:13:03.442 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=62
+2026-11-03T05:13:08.444 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=62
+2026-11-03T05:13:13.444 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=62
+2026-11-03T05:13:18.440 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=62
+2026-11-03T05:13:28.440 pid=27004 tid=16476 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=297 hosts=10 maxRefreshMs=62
+2026-11-03T05:13:33.446 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=62
+2026-11-03T05:13:38.439 pid=27004 tid=16476 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=297 hosts=10 maxRefreshMs=62
+2026-11-03T05:13:43.441 pid=27004 tid=16476 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=297 hosts=10 maxRefreshMs=78
+2026-11-03T05:13:48.445 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=62
+2026-11-03T05:13:53.446 pid=27004 tid=16476 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=297 hosts=10 maxRefreshMs=79
+2026-11-03T05:13:58.445 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=62
+2026-11-03T05:14:03.444 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=62
+2026-11-03T05:14:08.448 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=62
+2026-11-03T05:14:13.485 pid=27004 tid=16476 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=109
+2026-11-03T05:14:23.456 pid=27004 tid=16476 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=297 hosts=10 maxRefreshMs=63
+2026-11-03T05:14:33.457 pid=27004 tid=16476 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=297 hosts=10 maxRefreshMs=63
