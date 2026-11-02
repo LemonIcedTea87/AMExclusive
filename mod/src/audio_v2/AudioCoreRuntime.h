@@ -105,6 +105,7 @@ struct AudioCoreRuntimeStats final {
     std::uint32_t graphRate{}, graphChannels{}, graphSourceBits{};
     std::uint32_t requiredPrebufferFrames{};
     std::uint64_t resumeProducerFrames{};
+    std::uint64_t resumeProducerIntentQpc{}, lastAcceptedP0Qpc{};
     bool uiEnabled{}, graphBound{}, graphStarted{};
     bool graphPaused{}, graphControlPending{}, userPauseIntent{};
     bool resumePrebufferPending{}, resumeProducerPending{};
