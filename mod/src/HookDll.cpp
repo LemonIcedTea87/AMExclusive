@@ -2716,7 +2716,7 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
             L" enterQpc=" + std::to_wstring(enterQpc) +
             L" returnQpc=" + std::to_wstring(returnQpc));
     }
-    if (resumeP0Trace && result == 0 && producedPackets != 0) {
+    if (resumeP0Trace && producedPackets != 0) {
         auto expectedUntil = resumeTraceUntil;
         if (g_resumeP0TraceUntilTick.compare_exchange_strong(
                 expectedUntil, 0, std::memory_order_acq_rel)) {
