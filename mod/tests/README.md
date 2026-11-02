@@ -43,5 +43,5 @@ Build and run:
 
 ```powershell
 cmake --build <build-directory> --config Release --target am_exclusive_registry_probe
-<build-directory>\\Release\\am_exclusive_registry_probe.exe
+<build-directory>\Release\am_exclusive_registry_probe.exe
 ```

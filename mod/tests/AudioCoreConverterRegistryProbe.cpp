@@ -31,7 +31,7 @@ bool LatePrecisionOnRegisteredConverter() {
     if (!registry.Register(registration)) return false;
 
     void* provisional{};
-    std::uint32_t provisionalDepth = UINT32_MAX;
+    std::uint32_t provisionalDepth = 0xFFFFFFFFu;
     if (!registry.FindCandidateAnyPrecision(44100, 2, 102,
                                             provisional, provisionalDepth) ||
         provisional != converter || provisionalDepth != 0) {

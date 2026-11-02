@@ -236,6 +236,10 @@ public:
                 converter = reinterpret_cast<void*>(key);
                 return true;
             }
+            // An observed identity is authoritative. Falling back to a
+            // different decoder with the same rate/depth can bind stale
+            // precision evidence from the previous queue item.
+            return false;
         }
 
         bestObservation = 0;
