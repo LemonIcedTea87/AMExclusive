@@ -2387,6 +2387,31 @@ AppleOSStatus __cdecl HookV2AudioConverterSetProperty(void* converter,
                                 converter, data, dataSize, refreshedSource, refreshedDestination);
                             ObserveDecodedSourceFormat(&refreshedSource, &refreshedDestination,
                                                        converter, _ReturnAddress());
+                            // The cookie refresh gives this compressed decoder a fresh
+                            // observation even when an unrelated LPCM/SRC converter
+                            // overwrote the setup thread's earlier QLAC context before
+                            // the cookie was applied. Publish the precision against the
+                            // refreshed decoder's own observation for cross-thread
+                            // AudioUnit format resolution.
+                            constexpr std::uint32_t alacFormat = 0x616C6163; // 'alac'
+                            constexpr std::uint32_t qlacFormat = 0x716C6163; // 'qlac'
+                            if ((refreshedSource.mFormatID == alacFormat ||
+                                 refreshedSource.mFormatID == qlacFormat) &&
+                                IsSupportedSourceBitDepth(bits) &&
+                                g_threadGraphFormat.converter == converter &&
+                                g_threadGraphFormat.observationId != 0 &&
+                                g_threadGraphFormat.sampleRate == rate &&
+                                g_threadGraphFormat.channels == channels) {
+                                RememberQlacBitDepthEvidence(
+                                    rate, channels, bits, g_threadGraphFormat.observationId);
+                                Log(L"v2 decoded compressed precision evidence remembered format=" +
+                                    AppleFormatIdText(refreshedSource.mFormatID) +
+                                    L" rate=" + std::to_wstring(rate) +
+                                    L" channels=" + std::to_wstring(channels) +
+                                    L" bits=" + std::to_wstring(bits) +
+                                    L" observation=" +
+                                    std::to_wstring(g_threadGraphFormat.observationId));
+                            }
                             g_audioCoreRuntime.OnConverterCreated(
                                 converter, sourceView, destinationView,
                                 g_threadGraphFormat.observationId, true);
