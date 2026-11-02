@@ -269,6 +269,10 @@ void AudioCoreRuntime::OnTransportPlayPause(std::uint64_t revision) noexcept {
         return;
     }
 
+    // Capture the exact pre-toggle queue and gate state. Periodic telemetry is
+    // too sparse to compare short UI and media-key pause/resume sequences.
+    Emit(AudioCoreRuntimeEvent::Telemetry, S_OK);
+
     const auto phase = coordinator_.Phase();
     const bool activeSinkPlayback = phase == AudioCoreGatePhase::Active &&
         (coordinator_.SinkState() == WasapiSinkState::Running || resumePrebufferPending_);
@@ -285,6 +289,8 @@ void AudioCoreRuntime::OnTransportPlayPause(std::uint64_t revision) noexcept {
         resumeProducerPending_ = false;
         nativeStartedAfterUserPause_ = false;
         if (activeSinkPlayback) coordinator_.PauseEndpoint();
+        // Pair the pre-toggle snapshot with the state after PauseEndpoint.
+        Emit(AudioCoreRuntimeEvent::Telemetry, S_OK);
         Wake();
         return;
     }
@@ -299,6 +305,9 @@ void AudioCoreRuntime::OnTransportPlayPause(std::uint64_t revision) noexcept {
     resumeProducerPending_ = false;
     resumeProducerFrames_ = 0;
     TryResumePausedSinkLocked(true);
+    // Records whether the explicit resume could start immediately or is waiting
+    // for fresh producer PCM / the normal prebuffer threshold.
+    Emit(AudioCoreRuntimeEvent::Telemetry, S_OK);
     Wake();
 }
 
@@ -2055,6 +2064,9 @@ void AudioCoreRuntime::TryResumePausedSinkLocked(bool requireFreshProducer) noex
             observedPlaybackItem_ != 0 && observedPlaybackItem_ == pausedPlaybackItem_)
             pausedPlaybackGeneration_ = 0;
         nativeStartedAfterUserPause_ = false;
+        // Capture the queue and producer counters at the successful endpoint
+        // restart, not only at the next periodic telemetry tick.
+        Emit(AudioCoreRuntimeEvent::Telemetry, S_OK);
     }
 }
 
