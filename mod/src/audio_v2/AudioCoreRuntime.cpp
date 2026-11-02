@@ -104,7 +104,6 @@ bool AudioCoreRuntime::Start(const AudioCoreRuntimeCallbacks& callbacks) noexcep
     streamingProducerDrainPending_ = false;
     streamingProducerDrainConverter_ = nullptr;
     streamingRestartNativeStartQpc_ = 0;
-    streamingEofCandidateConverter_ = nullptr;
     streamingEofCandidateConverter_.store(nullptr, std::memory_order_release);
     endOfStreamDrainPending_ = false;
     endOfStreamDrainConverter_ = nullptr;
