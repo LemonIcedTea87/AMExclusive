@@ -211,7 +211,8 @@ public:
     void RecordPcmReject(AudioCorePcmRejectReason reason) noexcept;
     bool OnPcmOutput(void* converter, const ApplePcmFormatView& format,
                      const ApplePcmBufferListView& list,
-                     std::uint32_t producedPackets) noexcept;
+                     std::uint32_t producedPackets,
+                     std::uint64_t producerCallbackQpc = 0) noexcept;
     // Called before the original decoder Fill. Only the identified pending
     // successor is back-pressured, before it can consume encoded input.
     bool ShouldDeferPcmPull(void* converter, std::uint32_t requestedFrames) noexcept;
