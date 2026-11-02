@@ -1163,6 +1163,7 @@ void AudioCoreRuntime::OnNativeClientStarted(void* client, HRESULT result) noexc
     // needs the normal subsequent Stop handshake before the tail is sealed.
     const auto boundConverter = boundConverter_.load(std::memory_order_acquire);
     streamingRestartNativeStartQpc_ = 0;
+    bool resumedStreamingStop = false;
     if (!endOfStreamDrainPending_ && streamingProducerDrainPending_ &&
         streamingProducerDrainConverter_ && graphUnit_ &&
         streamingProducerDrainConverter_ == boundConverter &&
@@ -1174,10 +1175,11 @@ void AudioCoreRuntime::OnNativeClientStarted(void* client, HRESULT result) noexc
         }
         streamingProducerDrainPending_ = false;
         streamingProducerDrainConverter_ = nullptr;
+        resumedStreamingStop = true;
     }
 
     TryBindGraphLocked();
-    if (!userPauseIntent_) TryResumePausedSinkLocked();
+    if (!userPauseIntent_) TryResumePausedSinkLocked(resumedStreamingStop);
     if (!userPauseIntent_ && playbackStateAvailable_ && observedPlaybackItem_ != 0 &&
         observedPlaybackItem_ == pausedPlaybackItem_ &&
         coordinator_.SinkState() == WasapiSinkState::Running)
@@ -1278,8 +1280,14 @@ void* AudioCoreRuntime::OnNativeClientStopped(void* client, HRESULT result) noex
         // Stop without a preceding zero-packet Fill is only a scheduler edge.
         // Preserve the generation across AudioUnit teardown; if a late producer
         // EOF arrives, OnStreamingProducerEndOfStream will seal at that point.
+        // Park the exclusive sink too. Otherwise its render worker restarts on
+        // the first device period of new PCM and can repeatedly starve while
+        // the producer is still rebuilding its reservoir. Native Start resumes
+        // it through TryResumePausedSinkLocked(), which waits for the existing
+        // 300 ms low-water prebuffer before reopening the device clock.
         streamingProducerDrainPending_ = true;
         streamingProducerDrainConverter_ = converter;
+        coordinator_.PauseEndpoint();
         Wake();
         return converter;
     }
@@ -1334,6 +1342,10 @@ bool AudioCoreRuntime::OnStreamingProducerEndOfStream(void* converter) noexcept 
             return true;
         }
         const bool sealed = BeginEndOfStreamDrainLocked(converter, false);
+        // A late producer EOF may arrive after the scheduler Stop parked the
+        // sink. Terminal tails bypass the resume prebuffer and still need to
+        // reach the device-clock drain.
+        if (sealed) TryResumePausedSinkLocked();
         Wake();
         return sealed;
     }
