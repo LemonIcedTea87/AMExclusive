@@ -1060,6 +1060,22 @@ void AudioCoreRuntime::OnNativeClientStarted(void* client, HRESULT result) noexc
     nativeInitialized_ = true;
     nativeStarted_ = true;
     if (userPauseIntent_ || resumeProducerPending_) nativeStartedAfterUserPause_ = true;
+
+    // A fresh native scheduler start on the same still-bound P0 converter
+    // proves that the preceding Native Stop was only a transient scheduler
+    // edge. Do not let a delayed zero-packet Fill from that old stop seal the
+    // generation after playback has already resumed. With the fence cleared,
+    // a later zero-packet Fill becomes a provisional EOF candidate and still
+    // needs the normal subsequent Stop handshake before the tail is sealed.
+    const auto boundConverter = boundConverter_.load(std::memory_order_acquire);
+    if (!endOfStreamDrainPending_ && streamingProducerDrainPending_ &&
+        streamingProducerDrainConverter_ && graphUnit_ &&
+        streamingProducerDrainConverter_ == boundConverter &&
+        streamingProducerDrainConverter_ == graphConverter_) {
+        streamingProducerDrainPending_ = false;
+        streamingProducerDrainConverter_ = nullptr;
+    }
+
     TryBindGraphLocked();
     if (!userPauseIntent_) TryResumePausedSinkLocked();
     if (!userPauseIntent_ && playbackStateAvailable_ && observedPlaybackItem_ != 0 &&
