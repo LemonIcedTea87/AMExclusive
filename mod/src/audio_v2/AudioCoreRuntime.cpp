@@ -556,6 +556,15 @@ void AudioCoreRuntime::OnConverterCreated(void* converter,
             registry_.UpdateSourcePrecision(converter, pendingBits, pendingRate, pendingChannels);
         }
     }
+    // The converter descriptor and the AudioUnit input-format property can
+    // arrive in either order. If this registration completes the exact
+    // observation already recorded for the current graph, retry its bind now.
+    if (graphUnit_ && graphRate_ == registration.outputFormat.sampleRate &&
+        graphChannels_ == registration.outputFormat.channels &&
+        graphSourceBits_ != 0 && graphObservationId_ != 0 &&
+        graphObservationId_ == observationId) {
+        TryBindGraphLocked();
+    }
 }
 
 bool AudioCoreRuntime::IsConverterRegistered(void* converter) const noexcept {
@@ -935,6 +944,49 @@ void AudioCoreRuntime::OnAudioUnitInitialized(void* unit, void* candidateConvert
     graphSourceBits_ = sourceBitDepth;
     graphObservationId_ = observationId;
     graphStarted_ = false;
+    graphInitializedTick_ = sampleRate >= 8000 && sampleRate <= 768000 &&
+        channels == 2 ? GetTickCount64() : 0;
+    TryBindGraphLocked();
+    Wake();
+}
+
+void AudioCoreRuntime::OnAudioUnitInputFormatUpdated(
+    void* unit, std::uint32_t sampleRate, std::uint32_t channels,
+    std::uint32_t sourceBitDepth, std::uint64_t observationId) noexcept {
+    if (!UiEnabled() || !unit || sampleRate < 8000 || sampleRate > 768000 ||
+        channels != 2 ||
+        !IsSupportedSourceDepth(static_cast<std::uint16_t>(sourceBitDepth))) {
+        return;
+    }
+
+    ControlScope lock(*this);
+    // A delayed property notification from a retired AudioUnit must never
+    // retarget the currently selected graph.
+    if (graphUnit_ != unit || graphRate_ != sampleRate || graphChannels_ != channels) {
+        return;
+    }
+
+    void* candidateConverter = nullptr;
+    (void)registry_.FindCandidate(sampleRate, channels, sourceBitDepth,
+                                  observationId, candidateConverter);
+    const bool graphIdentityChanged = graphConverter_ != candidateConverter;
+    if (graphIdentityChanged) {
+        (void)RetireDirectSelectionLocked();
+        if (pendingDeferredConverter_.load(std::memory_order_acquire) &&
+            pendingDeferredConverter_.load(std::memory_order_acquire) != candidateConverter) {
+            ClearPendingCaptureLocked();
+        }
+        if (pendingGraphBind_.converter != candidateConverter) pendingGraphBind_ = {};
+        if (!endOfStreamDrainPending_ && !streamingProducerDrainPending_ && graphBound_) {
+            RetireCaptureLocked(true);
+        }
+    }
+
+    // Preserve graphStarted_ and graphOutputUnit_: the parent AudioOutputUnit
+    // can already have started while this more precise property was pending.
+    graphConverter_ = candidateConverter;
+    graphSourceBits_ = sourceBitDepth;
+    graphObservationId_ = observationId;
     TryBindGraphLocked();
     Wake();
 }
@@ -957,6 +1009,18 @@ void AudioCoreRuntime::OnAudioUnitStarted(void* unit) noexcept {
         // start is the graph-start edge for activation purposes.
         graphStarted_ = true;
         graphOutputUnit_ = unit;
+    } else if (!graphBound_ && !pendingGraphBind_.converter &&
+               graphUnit_ && graphRate_ >= 8000 && graphChannels_ == 2 &&
+               graphInitializedTick_ != 0) {
+        // A parent Start may precede ALAC cookie/precision resolution. Keep
+        // that Start attached to the just-initialized graph so a later exact
+        // input-format update can bind and activate without another Play.
+        const auto now = GetTickCount64();
+        if (now >= graphInitializedTick_ && now - graphInitializedTick_ <= 2000) {
+            graphStarted_ = true;
+            graphOutputUnit_ = unit;
+            TryBindGraphLocked();
+        }
     }
     if (!userPauseIntent_) TryResumePausedSinkLocked();
     Wake();
@@ -1036,6 +1100,7 @@ void AudioCoreRuntime::OnAudioUnitUninitialized(void* unit) noexcept {
     graphSourceBits_ = 0;
     graphObservationId_ = 0;
     graphStarted_ = false;
+    graphInitializedTick_ = 0;
     Wake();
 }
 

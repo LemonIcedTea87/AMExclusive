@@ -16,6 +16,13 @@ target_include_directories(am_exclusive_drain_probe PRIVATE src)
 target_compile_definitions(am_exclusive_drain_probe PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
 target_link_libraries(am_exclusive_drain_probe PRIVATE ole32 uuid avrt)
 
+# No-device regression probe for decoder precision arriving after registration.
+add_executable(am_exclusive_registry_probe EXCLUDE_FROM_ALL
+  tests/AudioCoreConverterRegistryProbe.cpp)
+target_include_directories(am_exclusive_registry_probe PRIVATE src)
+target_compile_definitions(am_exclusive_registry_probe PRIVATE
+  UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+
 include(FetchContent)
 FetchContent_Declare(
   minhook

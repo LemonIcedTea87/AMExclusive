@@ -2959,6 +2959,8 @@ AppleOSStatus __cdecl HookV2AudioUnitSetProperty(void* unit, std::uint32_t prope
         std::to_wstring(rate) + L" sourceBitDepth=" + std::to_wstring(sourceBitDepth) +
         L" observation=" + std::to_wstring(observationId) + L" binding=" + binding +
         L" tid=" + std::to_wstring(GetCurrentThreadId()));
+    g_audioCoreRuntime.OnAudioUnitInputFormatUpdated(
+        unit, rate, streamFormat->mChannelsPerFrame, sourceBitDepth, observationId);
     return result;
 }
 

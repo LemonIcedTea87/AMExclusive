@@ -178,6 +178,10 @@ public:
                                 std::uint32_t sampleRate, std::uint32_t channels,
                                 std::uint32_t sourceBitDepth,
                                 std::uint64_t observationId = 0) noexcept;
+    void OnAudioUnitInputFormatUpdated(void* unit, std::uint32_t sampleRate,
+                                       std::uint32_t channels,
+                                       std::uint32_t sourceBitDepth,
+                                       std::uint64_t observationId) noexcept;
     void OnAudioUnitStarted(void* unit) noexcept;
     void OnAudioUnitStopped(void* unit) noexcept;
     void OnAudioUnitUninitialized(void* unit) noexcept;
@@ -353,6 +357,9 @@ private:
     std::atomic<bool> nativeGraphHandoffPending_{};
     void* graphUnit_{};
     void* graphOutputUnit_{};
+    // Timestamp of the current child-graph initialization. Apple may start
+    // its parent output unit before the decoder's source precision is known.
+    ULONGLONG graphInitializedTick_{};
     void* graphConverter_{};
     std::uint32_t graphRate_{};
     std::uint32_t graphChannels_{};

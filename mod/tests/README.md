@@ -30,3 +30,18 @@ hardware.
 
 These are transport/control tests. They do not establish audible correctness
 or Apple Music lifecycle behavior.
+
+
+# Converter registry late-precision probe
+
+This probe does not open an audio device. It exercises the converter-registry
+handoff where an ALAC/QLAC candidate is registered before its source precision
+is known, then verifies that later 16/24-bit evidence resolves the exact
+observation and can be bound.
+
+Build and run:
+
+```powershell
+cmake --build <build-directory> --config Release --target am_exclusive_registry_probe
+<build-directory>\\Release\\am_exclusive_registry_probe.exe
+```
