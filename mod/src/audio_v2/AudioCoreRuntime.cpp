@@ -954,12 +954,13 @@ void AudioCoreRuntime::OnAudioUnitInputFormatUpdated(
     void* unit, std::uint32_t sampleRate, std::uint32_t channels,
     std::uint32_t sourceBitDepth, std::uint64_t observationId) noexcept {
     if (!UiEnabled() || !unit || sampleRate < 8000 || sampleRate > 768000 ||
-        channels != 2 ||
+        channels != 2 || sourceBitDepth > UINT16_MAX ||
         !IsSupportedSourceDepth(static_cast<std::uint16_t>(sourceBitDepth))) {
         return;
     }
 
     ControlScope lock(*this);
+    ExtendSeekQuietPeriodLocked();
     // A delayed property notification from a retired AudioUnit must never
     // retarget the currently selected graph.
     if (graphUnit_ != unit || graphRate_ != sampleRate || graphChannels_ != channels) {
