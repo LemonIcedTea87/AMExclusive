@@ -1839,6 +1839,8 @@ AudioCoreRuntimeStats AudioCoreRuntime::StatsLocked() const noexcept {
     stats.resumePrebufferPending = resumePrebufferPending_;
     stats.resumeProducerPending = resumeProducerPending_;
     stats.resumeProducerFrames = resumeProducerFrames_;
+    stats.resumeProducerIntentQpc = resumeProducerIntentQpc_;
+    stats.lastAcceptedP0Qpc = lastAcceptedP0Qpc_.load(std::memory_order_acquire);
     stats.resumeProducerProgressObserved = resumeProducerProgressObserved_;
     stats.seekFence = seekFence_;
     stats.nativeInitialized = nativeInitialized_;
