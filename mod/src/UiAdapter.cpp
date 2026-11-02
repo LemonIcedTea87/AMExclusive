@@ -810,6 +810,7 @@ struct UiWindowContext {
     std::uint64_t playbackSync{};
     std::uint64_t lastPlaybackItem{};
     std::int32_t playbackError{};
+    std::wstring playbackErrorStage;
     ObserverRef root, page;
     std::uint64_t rootRevision{};
     ULONGLONG pageObservedTick{};
@@ -898,6 +899,9 @@ void ClearPlaybackObserver(const std::shared_ptr<UiWindowContext>& context) noex
 }
 
 void RefreshPlaybackState(const std::shared_ptr<UiWindowContext>& context) noexcept {
+    // Keep the last failing operation so HRESULTs identify the exact
+    // Apple Music ABI/property call rather than only the outer observer.
+    const wchar_t* stage = L"Player::Current (activation factory / get_Current)";
     try {
         // Never construct another Player or call Play/Pause. Read Apple's
         // existing logical player on this Window's owning dispatcher.
@@ -907,6 +911,7 @@ void RefreshPlaybackState(const std::shared_ptr<UiWindowContext>& context) noexc
         if (player != context->player) {
             ClearPlaybackObserver(context);
             context->player = player;
+            stage = L"Player.PropertyChanged add (INotifyPropertyChanged QI / event add)";
             context->playerChanged = player.PropertyChanged(
                 [weak](auto&&, Xaml::Data::PropertyChangedEventArgs const& args) noexcept {
                     try {
@@ -916,12 +921,17 @@ void RefreshPlaybackState(const std::shared_ptr<UiWindowContext>& context) noexc
                     } catch (...) {}
                 });
         }
+
+        stage = L"Player::PlayerState (IPlayer QI / get_PlayerState)";
         auto state = player.PlayerState();
         if (state != context->playerState) {
-            if (context->playerState)
+            if (context->playerState) {
+                stage = L"PlayerState.PropertyChanged remove (INotifyPropertyChanged QI / event remove)";
                 context->playerState.PropertyChanged(context->playerStateChanged);
+            }
             context->playerState = state;
             if (state) {
+                stage = L"PlayerState.PropertyChanged add (INotifyPropertyChanged QI / event add)";
                 context->playerStateChanged = state.PropertyChanged(
                     [weak](auto&&, auto&&) noexcept { QueuePlaybackState(weak); });
             }
@@ -930,12 +940,17 @@ void RefreshPlaybackState(const std::shared_ptr<UiWindowContext>& context) noexc
             RevokePlaybackObserver(context);
             return;
         }
+
+        stage = L"Player::NowPlayingItem (IPlayer QI / get_NowPlayingItem)";
         auto item = player.NowPlayingItem();
         if (item != context->playingItem) {
-            if (context->playingItem)
+            if (context->playingItem) {
+                stage = L"NowPlayingItem.PropertyChanged remove (INotifyPropertyChanged QI / event remove)";
                 context->playingItem.PropertyChanged(context->playingItemChanged);
+            }
             context->playingItem = item;
             if (item) {
+                stage = L"NowPlayingItem.PropertyChanged add (INotifyPropertyChanged QI / event add)";
                 context->playingItemChanged = item.PropertyChanged(
                     [weak](auto&&, Xaml::Data::PropertyChangedEventArgs const& args) noexcept {
                         try {
@@ -945,17 +960,24 @@ void RefreshPlaybackState(const std::shared_ptr<UiWindowContext>& context) noexc
                     });
             }
         }
+
+        stage = L"NowPlayingItem::PlayQueueItemID (INowPlayingItem QI / get_PlayQueueItemID)";
         const auto queueItem = item ? item.PlayQueueItemID() : 0;
-        const bool playing = state.IsPlaying(), paused = state.IsPaused();
+        stage = L"PlayerState::IsPlaying (IPlayerState QI / get_IsPlaying)";
+        const bool playing = state.IsPlaying();
+        stage = L"PlayerState::IsPaused (IPlayerState QI / get_IsPaused)";
+        const bool paused = state.IsPaused();
         const auto observed = ammod::ui::ClassifyPlaybackState(playing, paused);
         g_playbackObserverOwner.store(context.get());
         context->playbackError = 0;
+        context->playbackErrorStage.clear();
         const auto sync = g_playbackSync.load();
         if (observed == ammod::ui::PlaybackState::Unknown ||
             (observed == context->lastPlaybackState && queueItem == context->lastPlaybackItem &&
              sync == context->playbackSync)) return;
         // QPC is monotonic across processes in the same boot, so a new UI
         // process cannot reset revisions below those retained by a live Agent.
+        stage = L"QueueTransport (playback state snapshot)";
         const auto revision = PlaybackRevision();
         if (!revision) return;
         QueueTransport(std::wstring(observed == ammod::ui::PlaybackState::Playing
@@ -965,13 +987,28 @@ void RefreshPlaybackState(const std::shared_ptr<UiWindowContext>& context) noexc
         context->lastPlaybackItem = queueItem;
         context->playbackSync = sync;
     } catch (const hresult_error& error) {
-        ClearPlaybackObserver(context);
-        if (context->playbackError != error.code().value) {
+        if (context->playbackError != error.code().value ||
+            context->playbackErrorStage != stage) {
             context->playbackError = error.code().value;
-            Log(L"Apple player observation failed hr=" +
-                std::to_wstring(static_cast<std::uint32_t>(error.code())));
+            context->playbackErrorStage = stage;
+            try {
+                std::wostringstream message;
+                message << L"Apple player observation failed stage=" << stage
+                        << L" hr=0x" << std::uppercase << std::hex
+                        << static_cast<std::uint32_t>(error.code());
+                Log(message.str());
+            } catch (...) {}
         }
+        ClearPlaybackObserver(context);
     } catch (...) {
+        if (context->playbackError != 0 || context->playbackErrorStage != stage) {
+            context->playbackError = 0;
+            context->playbackErrorStage = stage;
+            try {
+                Log(L"Apple player observation failed stage=" + std::wstring(stage) +
+                    L" exception=unknown");
+            } catch (...) {}
+        }
         ClearPlaybackObserver(context);
     }
 }
