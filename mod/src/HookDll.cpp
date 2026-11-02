@@ -2857,8 +2857,11 @@ AppleOSStatus __cdecl HookV2AudioUnitSetProperty(void* unit, std::uint32_t prope
         now - g_threadGraphFormat.observedTick <= 2000 &&
         g_threadGraphFormat.sampleRate == rate &&
         g_threadGraphFormat.channels == streamFormat->mChannelsPerFrame;
+    constexpr std::uint32_t alac = 0x616C6163; // 'alac'
     constexpr std::uint32_t qlac = 0x716C6163; // 'qlac'
     constexpr std::uint32_t qaac = 0x71616163; // 'qaac'
+    const bool alacCandidateMatches = hasFreshCandidate &&
+        g_threadGraphFormat.encodedFormat == alac;
     const bool qlacCandidateMatches = hasFreshCandidate &&
         g_threadGraphFormat.encodedFormat == qlac &&
         IsSupportedSourceBitDepth(g_threadGraphFormat.sourceBitDepth);
@@ -2870,14 +2873,20 @@ AppleOSStatus __cdecl HookV2AudioUnitSetProperty(void* unit, std::uint32_t prope
     std::uint32_t sourceBitDepth = qaacCandidateMatches ? 32u :
         ((qlacCandidateMatches || localPcmCandidateMatches)
             ? g_threadGraphFormat.sourceBitDepth : 0u);
-    std::uint64_t observationId = (qlacCandidateMatches || qaacCandidateMatches ||
-                                   localPcmCandidateMatches)
+    std::uint64_t observationId = (alacCandidateMatches || qlacCandidateMatches ||
+                                   qaacCandidateMatches || localPcmCandidateMatches)
         ? g_threadGraphFormat.observationId : 0;
-    std::wstring binding = qaacCandidateMatches ? L"same-thread-qaac" :
-        (qlacCandidateMatches ? L"same-thread-qlac" :
-         (localPcmCandidateMatches ? L"same-thread-pre-src-lpcm" :
-          (hasFreshCandidate ? L"fresh-non-p0" : L"unknown")));
-    if (!sourceBitDepth && ResolveUnambiguousQlacBitDepth(
+    std::wstring binding = alacCandidateMatches ? L"same-thread-alac" :
+        (qaacCandidateMatches ? L"same-thread-qaac" :
+         (qlacCandidateMatches ? L"same-thread-qlac" :
+          (localPcmCandidateMatches ? L"same-thread-pre-src-lpcm" :
+           (hasFreshCandidate ? L"fresh-non-p0" : L"unknown"))));
+    // ALAC can expose source precision only after its decompression cookie is
+    // applied. Preserve its exact fresh observation and let AudioUnitInitialize
+    // resolve that registered converter by observation id; old QLAC precision
+    // evidence for the same rate must not be reused for this new ALAC item.
+    if (!sourceBitDepth && !alacCandidateMatches &&
+        ResolveUnambiguousQlacBitDepth(
             rate, streamFormat->mChannelsPerFrame, sourceBitDepth, observationId)) {
         binding = L"cross-thread-unambiguous";
     }
