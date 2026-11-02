@@ -225,6 +225,9 @@ std::atomic<bool> g_audioCoreV2HooksInstalled{};
 std::atomic<bool> g_nativeTraceEnabled{};
 std::atomic<std::uint64_t> g_nativeTraceFillCalls{};
 std::atomic<std::uint64_t> g_nativeTracePropertyCalls{};
+std::atomic<void*> g_resumeP0TraceConverter{};
+std::atomic<ULONGLONG> g_resumeP0TraceUntilTick{};
+std::atomic<std::uint64_t> g_resumeP0TraceCalls{};
 struct GraphFormatCandidate {
     std::uint32_t sampleRate{};
     std::uint32_t channels{};
@@ -905,6 +908,25 @@ void Log(const std::wstring& message) {
          << std::setw(3) << now.wMilliseconds << L" pid=" << GetCurrentProcessId()
          << L" tid=" << GetCurrentThreadId() << L" " << message;
     ammod::logging::AppendWideLine(g_logPath, g_logMutex, line.str(), 8ull * 1024ull * 1024ull, 2);
+}
+
+void ArmResumeP0FillTraceIfPending(const wchar_t* reason) {
+    const auto stats = g_audioCoreRuntime.Stats();
+    if (!stats.resumeProducerPending) return;
+    void* converter = g_audioCoreRuntime.BoundConverter();
+    if (!converter || !g_audioCoreRuntime.IsP0Converter(converter)) return;
+
+    g_resumeP0TraceUntilTick.store(0, std::memory_order_release);
+    g_resumeP0TraceConverter.store(converter, std::memory_order_relaxed);
+    g_resumeP0TraceCalls.store(0, std::memory_order_relaxed);
+    constexpr ULONGLONG traceWindowMs = 2000;
+    g_resumeP0TraceUntilTick.store(GetTickCount64() + traceWindowMs,
+                                   std::memory_order_release);
+    Log(L"audio core v2 resume P0 Fill trace armed reason=" +
+        std::wstring(reason ? reason : L"unknown") +
+        L" converter=" + std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
+        L" watermark=" + std::to_wstring(stats.resumeProducerFrames) +
+        L" windowMs=" + std::to_wstring(traceWindowMs));
 }
 
 std::wstring ReadSetting(const wchar_t* key, const wchar_t* fallback) {
@@ -2583,7 +2605,15 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
     const auto traceCall = nativeTrace
         ? g_nativeTraceFillCalls.fetch_add(1, std::memory_order_relaxed) + 1 : 0;
     const auto requestedPackets = outputPackets ? *outputPackets : 0u;
-    const auto enterQpc = nativeTrace ? CurrentQpc() : 0;
+    const auto resumeTraceConverter = g_resumeP0TraceConverter.load(std::memory_order_acquire);
+    const auto resumeTraceUntil = g_resumeP0TraceUntilTick.load(std::memory_order_acquire);
+    const bool resumeP0Trace = p0Candidate && converter == resumeTraceConverter &&
+        resumeTraceUntil != 0 && GetTickCount64() <= resumeTraceUntil;
+    const auto resumeP0Call = resumeP0Trace
+        ? g_resumeP0TraceCalls.fetch_add(1, std::memory_order_relaxed) + 1 : 0;
+    const bool resumeP0TraceSample = resumeP0Trace &&
+        (resumeP0Call <= 8 || resumeP0Call % 16 == 0);
+    const auto enterQpc = (nativeTrace || resumeP0Trace) ? CurrentQpc() : 0;
     const auto caller = reinterpret_cast<std::uintptr_t>(_ReturnAddress());
     struct NativeInputTraceContext final {
         AudioConverterComplexInputDataProcFn original{};
@@ -2672,6 +2702,26 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
         // Fill has no decoded frames.  Binding can complete on a later graph
         // event, while the pair remains valid for the same converter.
         g_nativeP0Puller.ObserveNativeFill(converter, inputProc, inputUserData, requestedPackets);
+    }
+    if (resumeP0Trace && (resumeP0TraceSample || producedPackets != 0)) {
+        const auto returnQpc = CurrentQpc();
+        Log(L"audio core v2 resume P0 Fill converter=" +
+            std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
+            L" call=" + std::to_wstring(resumeP0Call) +
+            L" inputProc=" + std::to_wstring(reinterpret_cast<std::uintptr_t>(inputProc)) +
+            L" inputUserData=" + std::to_wstring(reinterpret_cast<std::uintptr_t>(inputUserData)) +
+            L" requestedPackets=" + std::to_wstring(requestedPackets) +
+            L" producedPackets=" + std::to_wstring(producedPackets) +
+            L" result=" + std::to_wstring(result) +
+            L" enterQpc=" + std::to_wstring(enterQpc) +
+            L" returnQpc=" + std::to_wstring(returnQpc));
+    }
+    if (resumeP0Trace && result == 0 && producedPackets != 0) {
+        auto expectedUntil = resumeTraceUntil;
+        if (g_resumeP0TraceUntilTick.compare_exchange_strong(
+                expectedUntil, 0, std::memory_order_acq_rel)) {
+            g_resumeP0TraceConverter.store(nullptr, std::memory_order_release);
+        }
     }
     if (nativeTrace && (traceCall <= 64 || result != 0 || traceCall % 256u == 0)) {
         const auto outputShape = InspectNativeTraceBuffers(outputData);
@@ -3215,6 +3265,7 @@ AppleOSStatus __cdecl HookV2AudioOutputUnitStart(void* unit) {
                 L" bits=" + std::to_wstring(g_threadGraphFormat.sourceBitDepth));
         }
         g_audioCoreRuntime.OnAudioUnitStarted(unit);
+        ArmResumeP0FillTraceIfPending(L"audio-unit-start");
         if (void* bound = g_audioCoreRuntime.BoundConverter()) {
             (void)PromoteV2LocalQueue(bound);
         }
@@ -3290,6 +3341,7 @@ void V2OnNativeStart(void* context, void* client, HRESULT result) noexcept {
         std::to_wstring(reinterpret_cast<std::uintptr_t>(client)) +
         L" result=" + HResultText(result) + L" qpc=" + std::to_wstring(CurrentQpc()));
     static_cast<ammod::audio_v2::AudioCoreRuntime*>(context)->OnNativeClientStarted(client, result);
+    ArmResumeP0FillTraceIfPending(L"native-client-start");
 }
 
 bool V2BeforeNativeStop(void* context, void* client) noexcept {
@@ -3721,6 +3773,7 @@ DWORD WINAPI PipeClientLoop(void*) {
             } else if (incoming.type == MessageType::TransportIntent) {
                 if (wcscmp(incoming.detail, L"play_pause") == 0) {
                     g_audioCoreRuntime.OnTransportPlayPause(incoming.generation);
+                    ArmResumeP0FillTraceIfPending(L"transport");
                     Log(L"transport intent play_pause");
                 } else if (wcscmp(incoming.detail, L"playback_unavailable") == 0) {
                     g_audioCoreRuntime.OnTransportPlaybackUnavailable(incoming.generation);
