@@ -1477,7 +1477,8 @@ void AudioCoreRuntime::RecordPcmReject(AudioCorePcmRejectReason reason) noexcept
 
 bool AudioCoreRuntime::OnPcmOutput(void* converter, const ApplePcmFormatView& format,
                                    const ApplePcmBufferListView& list,
-                                   std::uint32_t producedPackets) noexcept {
+                                   std::uint32_t producedPackets,
+                                   std::uint64_t producerCallbackQpc) noexcept {
     if (!UiEnabled()) return false;
     callbackDepth_.fetch_add(1, std::memory_order_acq_rel);
     bool accepted = false;
@@ -1510,9 +1511,7 @@ bool AudioCoreRuntime::OnPcmOutput(void* converter, const ApplePcmFormatView& fo
                 snapshot.registration.outputFormat.sampleRate == format.sampleRate;
             const bool channelMatches =
                 snapshot.registration.outputFormat.channels == format.channelsPerFrame;
-            LARGE_INTEGER p0ArrivalQpc{};
             const bool boundP0Output = IsP0Converter(converter);
-            if (boundP0Output) QueryPerformanceCounter(&p0ArrivalQpc);
             if (!rateMatches) RecordPcmReject(AudioCorePcmRejectReason::RateMismatch);
             if (!channelMatches) RecordPcmReject(AudioCorePcmRejectReason::ChannelMismatch);
             if (!rateMatches || !channelMatches) {
@@ -1534,10 +1533,9 @@ bool AudioCoreRuntime::OnPcmOutput(void* converter, const ApplePcmFormatView& fo
                                                  discontinuity, false);
                     }
                     if (accepted) {
-                        if (boundP0Output && p0ArrivalQpc.QuadPart > 0)
+                        if (boundP0Output && producerCallbackQpc != 0)
                             lastAcceptedP0Qpc_.store(
-                                static_cast<std::uint64_t>(p0ArrivalQpc.QuadPart),
-                                std::memory_order_release);
+                                producerCallbackQpc, std::memory_order_release);
                         if (callbacks_.deepDiagnostics) {
                             acceptedCalls_.fetch_add(1, std::memory_order_relaxed);
                             acceptedFrames_.fetch_add(output.frames, std::memory_order_relaxed);
