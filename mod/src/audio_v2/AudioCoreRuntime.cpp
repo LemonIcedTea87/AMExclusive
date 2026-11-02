@@ -302,6 +302,8 @@ void AudioCoreRuntime::OnTransportPlayPause(std::uint64_t revision) noexcept {
     }
 
     // A second legacy toggle while a pause is latched is the resume action.
+    // `revision` is the UI click's QPC. A P0 Fill may begin after that click but
+    // finish before this IPC arrives; its accepted PCM must remain valid progress.
     // An earlier Native Start may have armed the implicit-resume watermark
     // before this explicit Play IPC arrived. The explicit toggle is authoritative;
     // discard that stale watermark, then let the active/open resume path establish
@@ -2073,8 +2075,10 @@ void AudioCoreRuntime::TryResumePausedSinkLocked(bool requireFreshProducer) noex
     if (requireFreshProducer) {
         // Apple's graph can stay Started while the paused media producer is
         // idle. Cached PCM alone must not start the device before that source
-        // actually resumes. The tap counter advances only for the bound source;
-        // it needs no new callback work or timing estimate. Local eager PCM
+        // actually resumes. Compare the P0 Fill-entry QPC with the UI click QPC
+        // so data produced during IPC transit is retained, while an older Fill
+        // already in flight at click time cannot satisfy the fresh-producer gate.
+        // Local eager PCM
         // may have no later callback and does not use this compressed-P0 fence.
         resumeProducerPending_ = IsP0Converter(boundConverter_.load(std::memory_order_acquire));
         resumeProducerFrames_ = tap_.Stats().acceptedFrames;
