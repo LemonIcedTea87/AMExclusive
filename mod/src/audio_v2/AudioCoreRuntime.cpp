@@ -257,10 +257,6 @@ void AudioCoreRuntime::OnTransportPlayPause(std::uint64_t revision) noexcept {
         (revision == 0 || revision <= latestPlaybackStateRevision_)) return;
     if (revision != 0) latestPlaybackStateRevision_ = revision;
 
-    // Reconcile a keyboard media-key Resume before interpreting this click as
-    // another toggle. The native graph may have resumed without a UI IPC event.
-    (void)TryPromoteNativeResumeLocked();
-
     // This click may have caused Apple's native Start already. Its IPC
     // notification can arrive a few milliseconds later while the old sink
     // still reports Running; consume that matching echo instead of turning
