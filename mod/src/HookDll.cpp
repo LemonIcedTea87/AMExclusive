@@ -2618,7 +2618,10 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
         ? g_resumeP0TraceCalls.fetch_add(1, std::memory_order_relaxed) + 1 : 0;
     const bool resumeP0TraceSample = resumeP0Trace &&
         (resumeP0Call <= 8 || resumeP0Call % 16 == 0);
-    const auto enterQpc = (nativeTrace || resumeP0Trace) ? CurrentQpc() : 0;
+    // Timestamp the P0 Fill before entering Apple's producer. A call already
+    // in flight at click time must not qualify as post-click PCM merely because
+    // it returned after the UI action.
+    const auto enterQpc = (nativeTrace || resumeP0Trace || p0Candidate) ? CurrentQpc() : 0;
     const auto caller = reinterpret_cast<std::uintptr_t>(_ReturnAddress());
     struct NativeInputTraceContext final {
         AudioConverterComplexInputDataProcFn original{};
@@ -2802,7 +2805,8 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
         };
     }
     const ammod::audio_v2::ApplePcmBufferListView view{count, buffers.data()};
-    g_audioCoreRuntime.OnPcmOutput(converter, format, view, producedPackets);
+    g_audioCoreRuntime.OnPcmOutput(converter, format, view, producedPackets,
+                                   p0Candidate ? enterQpc : 0);
     return result;
 }
 
