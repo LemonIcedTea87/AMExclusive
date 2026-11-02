@@ -257,6 +257,10 @@ void AudioCoreRuntime::OnTransportPlayPause(std::uint64_t revision) noexcept {
         (revision == 0 || revision <= latestPlaybackStateRevision_)) return;
     if (revision != 0) latestPlaybackStateRevision_ = revision;
 
+    // Reconcile a keyboard media-key Resume before interpreting this click as
+    // another toggle. The native graph may have resumed without a UI IPC event.
+    (void)TryPromoteNativeResumeLocked();
+
     // This click may have caused Apple's native Start already. Its IPC
     // notification can arrive a few milliseconds later while the old sink
     // still reports Running; consume that matching echo instead of turning
@@ -1153,6 +1157,9 @@ void AudioCoreRuntime::OnNativeClientStarted(void* client, HRESULT result) noexc
     nativeClient_.store(client, std::memory_order_release);
     nativeInitialized_ = true;
     nativeStarted_ = true;
+    const bool awaitingImplicitResume = userPauseIntent_ && !playbackStateAvailable_;
+    const auto resumeStartFrames = awaitingImplicitResume
+        ? tap_.Stats().acceptedFrames : 0;
     if (userPauseIntent_ || resumeProducerPending_) nativeStartedAfterUserPause_ = true;
 
     // A native Start can arrive after Apple's graph has selected a different
@@ -1183,6 +1190,15 @@ void AudioCoreRuntime::OnNativeClientStarted(void* client, HRESULT result) noexc
     }
 
     TryBindGraphLocked();
+    if (awaitingImplicitResume && userPauseIntent_ && !playbackStateAvailable_) {
+        // The UI adapter may not observe the keyboard's second media-key
+        // gesture. Arm a producer watermark so fresh P0 output following this
+        // successful native Start can serve as the missing Resume indication.
+        nativeStartedAfterUserPause_ = true;
+        resumeProducerFrames_ = resumeStartFrames;
+        if (IsP0Converter(boundConverter_.load(std::memory_order_acquire)))
+            resumeProducerPending_ = true;
+    }
     if (!userPauseIntent_) TryResumePausedSinkLocked(resumedBoundStreamingStop);
     if (!userPauseIntent_ && playbackStateAvailable_ && observedPlaybackItem_ != 0 &&
         observedPlaybackItem_ == pausedPlaybackItem_ &&
@@ -1613,6 +1629,7 @@ DWORD AudioCoreRuntime::WorkerMain() noexcept {
                     }
                 }
             }
+            (void)TryPromoteNativeResumeLocked();
             if (resumePrebufferPending_) TryResumePausedSinkLocked();
             TryActivateLocked();
             nativePumpBufferedFrames_.store(
@@ -1929,6 +1946,13 @@ void AudioCoreRuntime::TryBindGraphLocked() noexcept {
     boundConverter_.store(graphConverter_, std::memory_order_release);
     boundMediaGeneration_.store(generation, std::memory_order_release);
     graphBound_ = true;
+    // Native Start can precede resolution/binding of the P0 converter. Retain
+    // its watermark and arm the fresh-producer check when that graph becomes
+    // available, rather than requiring a second native Start.
+    if (userPauseIntent_ && !playbackStateAvailable_ &&
+        nativeStartedAfterUserPause_ && IsP0Converter(graphConverter_)) {
+        resumeProducerPending_ = true;
+    }
     if (!PromotePendingPcmLocked(graphConverter_)) {
         const HRESULT error = E_OUTOFMEMORY;
         Emit(AudioCoreRuntimeEvent::Faulted, error);
@@ -1952,6 +1976,33 @@ void AudioCoreRuntime::TryBindGraphLocked() noexcept {
 void AudioCoreRuntime::ExtendSeekQuietPeriodLocked() noexcept {
     if (!seekFence_ || seekFenceReleaseTick_ == 0) return;
     seekFenceReleaseTick_ = GetTickCount64() + 500;
+}
+
+bool AudioCoreRuntime::TryPromoteNativeResumeLocked() noexcept {
+    if (!userPauseIntent_ || playbackStateAvailable_ ||
+        !nativeStartedAfterUserPause_ || !nativeStarted_ || !graphStarted_ ||
+        !resumeProducerPending_ ||
+        !IsP0Converter(boundConverter_.load(std::memory_order_acquire))) {
+        return false;
+    }
+
+    // A Start alone is not enough: the producer must have delivered new PCM
+    // after it. This prevents graph/client initialization while still paused
+    // from releasing the user's pause latch.
+    if (tap_.Stats().acceptedFrames <= resumeProducerFrames_) return false;
+
+    userPauseIntent_ = false;
+    resumeProducerPending_ = false;
+    resumeProducerFrames_ = 0;
+    nativeStartedAfterUserPause_ = false;
+
+    // An existing generation may only need its parked endpoint resumed. A
+    // newly bound generation remains Capturing and will use TryActivateLocked.
+    if (coordinator_.Phase() == AudioCoreGatePhase::Active &&
+        coordinator_.SinkState() == WasapiSinkState::Open) {
+        TryResumePausedSinkLocked(false);
+    }
+    return true;
 }
 
 void AudioCoreRuntime::TryResumePausedSinkLocked(bool requireFreshProducer) noexcept {
