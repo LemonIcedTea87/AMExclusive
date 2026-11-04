@@ -1635,6 +1635,9 @@ DWORD AudioCoreRuntime::WorkerMain() noexcept {
             if (graphBound_ && coordinator_.SinkState() == WasapiSinkState::Faulted) {
                 HRESULT sinkError = coordinator_.Sink().Stats().lastError;
                 if (SUCCEEDED(sinkError)) sinkError = E_UNEXPECTED;
+                if (TryRecoverInvalidatedSinkLocked(sinkError)) continue;
+                // TryBindGraphLocked may itself fail closed while rebuilding.
+                if (!UiEnabled()) continue;
                 uiEnabled_.store(false, std::memory_order_release);
                 Emit(AudioCoreRuntimeEvent::Faulted, sinkError);
                 RetireCaptureLocked(false);
@@ -1861,6 +1864,48 @@ AudioCoreRuntimeStats AudioCoreRuntime::StatsLocked() const noexcept {
     stats.graphSourceBits = graphSourceBits_;
     stats.requiredPrebufferFrames = requiredPrebufferFrames_;
     return stats;
+}
+
+bool AudioCoreRuntime::TryRecoverInvalidatedSinkLocked(HRESULT error) noexcept {
+    if (error != AUDCLNT_E_DEVICE_INVALIDATED &&
+        error != AUDCLNT_E_RESOURCES_INVALIDATED) {
+        return false;
+    }
+
+    const auto converter = boundConverter_.load(std::memory_order_acquire);
+    if (!converter || converter != graphConverter_ || !graphUnit_ ||
+        !graphStarted_ || !nativeInitialized_ || !nativeStarted_ ||
+        !nativeClient_.load(std::memory_order_acquire) ||
+        userPauseIntent_ || graphPaused_ || graphControlPending_ || seekFence_ ||
+        endOfStreamDrainPending_ || streamingProducerDrainPending_ ||
+        streamingEofCandidateConverter_.load(std::memory_order_acquire) == converter ||
+        coordinator_.EndOfStreamSubmitted() ||
+        coordinator_.Phase() != AudioCoreGatePhase::Active) {
+        return false;
+    }
+
+    // Retry only the exact still-running graph. Do not resurrect a stopped
+    // track, a paused stream, or an old converter after Apple selected a successor.
+    ConverterRegistrationSnapshot snapshot{};
+    if (!registry_.Snapshot(converter, snapshot)) return false;
+    if (sinkRecoveryConverter_ != converter ||
+        sinkRecoveryRegistrationId_ != snapshot.registrationId) {
+        sinkRecoveryConverter_ = converter;
+        sinkRecoveryRegistrationId_ = snapshot.registrationId;
+        sinkRecoveryAttempts_ = 0;
+    }
+
+    constexpr std::uint32_t kMaximumRecoveryAttempts = 1;
+    if (sinkRecoveryAttempts_ >= kMaximumRecoveryAttempts) return false;
+    ++sinkRecoveryAttempts_;
+
+    // Preserve the Apple graph and converter registration, but discard the
+    // invalid WASAPI client, PCM queue and tap generation. The normal bind /
+    // prebuffer / activation path will reopen the exclusive endpoint.
+    RetireCaptureLocked(true);
+    TryBindGraphLocked();
+    return graphBound_ &&
+        boundConverter_.load(std::memory_order_acquire) == converter;
 }
 
 void AudioCoreRuntime::TryBindGraphLocked() noexcept {
