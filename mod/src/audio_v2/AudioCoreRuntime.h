@@ -304,6 +304,7 @@ private:
         std::unique_lock<std::mutex> lock_;
     };
     void TryBindGraphLocked() noexcept;
+    bool TryRecoverInvalidatedSinkLocked(HRESULT error) noexcept;
     void TryActivateLocked() noexcept;
     void TryResumePausedSinkLocked(bool requireFreshProducer = false) noexcept;
     bool TryPromoteNativeResumeLocked() noexcept;
@@ -396,6 +397,11 @@ private:
     bool nativeInitialized_{};
     bool nativeStarted_{};
     bool graphBound_{};
+    // Limit endpoint-invalidation recovery to one attempt per converter
+    // registration. This prevents a broken endpoint from causing a reopen loop.
+    void* sinkRecoveryConverter_{};
+    std::uint64_t sinkRecoveryRegistrationId_{};
+    std::uint32_t sinkRecoveryAttempts_{};
     // Earned only when a distinct, observed successor is blocked by an old
     // producer/endpoint drain. Consumed once after natural retirement; ordinary
     // cancellation must never turn an unbound old graph into a retry request.
