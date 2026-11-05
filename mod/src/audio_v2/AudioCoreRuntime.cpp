@@ -686,6 +686,7 @@ void AudioCoreRuntime::OnConverterSourcePrecision(void* converter,
     pendingCompressedRate_.store(sampleRate, std::memory_order_release);
     pendingCompressedChannels_.store(channels, std::memory_order_release);
     pendingCompressedBits_.store(sourceBitDepth, std::memory_order_release);
+    pendingCompressedPrecisionTick_.store(GetTickCount64(), std::memory_order_release);
     pendingCompressedConverter_.store(converter, std::memory_order_release);
     void* matchedConverter = nullptr;
     const bool direct = registry_.UpdateSourcePrecision(
@@ -994,10 +995,29 @@ bool AudioCoreRuntime::ArmProvisionalPendingCaptureLocked(
 bool AudioCoreRuntime::ShouldDeferPcmPull(void* converter, std::uint32_t requestedFrames) noexcept {
     callbackDepth_.fetch_add(1, std::memory_order_acq_rel);
     bool defer{};
-    if (UiEnabled() && pendingDeferredConverter_.load(std::memory_order_acquire) == converter) {
-        const auto* capture = pendingCapture_.load(std::memory_order_acquire);
-        defer = !capture || capture->failed.load(std::memory_order_acquire) ||
-            !capture->queue.CanAccept(std::max(1u, requestedFrames));
+    if (UiEnabled()) {
+        const auto deferredConverter =
+            pendingDeferredConverter_.load(std::memory_order_acquire);
+        if (deferredConverter == converter) {
+            const auto* capture = pendingCapture_.load(std::memory_order_acquire);
+            defer = !capture || capture->failed.load(std::memory_order_acquire) ||
+                !capture->queue.CanAccept(std::max(1u, requestedFrames));
+        } else if (pendingCompressedConverter_.load(std::memory_order_acquire) == converter &&
+                   boundConverter_.load(std::memory_order_acquire) != converter) {
+            // A cookie can identify a newly-created ALAC/QLAC P0 converter
+            // before AudioUnit publishes the matching graph observation.
+            // Pulling it during that window advances Apple's decoder, but
+            // OnPcmOutput cannot stage it yet because no exact pending capture
+            // exists. Return Apple's retryable empty-read status instead and
+            // let the graph observation arm the normal capture path first.
+            // Keep this narrowly bounded; a missing graph notification must
+            // not stall a converter forever.
+            const auto precisionTick =
+                pendingCompressedPrecisionTick_.load(std::memory_order_acquire);
+            const auto now = GetTickCount64();
+            defer = precisionTick != 0 && now >= precisionTick &&
+                now - precisionTick <= 2000;
+        }
     }
     callbackDepth_.fetch_sub(1, std::memory_order_acq_rel);
     return defer;
