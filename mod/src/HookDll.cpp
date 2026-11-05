@@ -2626,6 +2626,15 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
     if (ammod::ProcessExiting()) return g_v2OriginalAudioConverterFillComplexBuffer ? g_v2OriginalAudioConverterFillComplexBuffer(converter, inputProc, inputUserData, outputPackets, outputData, packetDescriptions) : -1;
     const bool p0Candidate = g_audioCoreRuntime.IsP0Converter(converter);
     std::unique_lock<std::mutex> p0FillLock;
+    struct P0FillUnlockNotifier final {
+        std::unique_lock<std::mutex>& lock;
+        ~P0FillUnlockNotifier() {
+            if (lock.owns_lock()) {
+                lock.unlock();
+                g_audioCoreRuntime.NotifyProducerLeaseAvailable();
+            }
+        }
+    } p0FillUnlockNotifier{p0FillLock};
     if (p0Candidate) {
         p0FillLock = std::unique_lock<std::mutex>(g_p0FillMutex);
         if (g_audioCoreRuntime.ShouldDeferPcmPull(converter, outputPackets ? *outputPackets : 0)) {
