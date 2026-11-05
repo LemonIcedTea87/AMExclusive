@@ -826,6 +826,20 @@ std::atomic<std::uint64_t> g_v2P1SignatureValidCalls{};
 std::atomic<std::uint64_t> g_v2P1SignatureInvalidCalls{};
 std::atomic<std::uint64_t> g_v2P1SignatureNonZeroCalls{};
 std::atomic<std::uint64_t> g_v2P1SignatureAllZeroCalls{};
+std::atomic<std::uint64_t> g_v2P1FirstZeroQpc{};
+std::atomic<std::uint64_t> g_v2P1LastZeroQpc{};
+std::atomic<std::uint64_t> g_v2P1FirstZeroCall{};
+std::atomic<std::uint64_t> g_v2P1FirstZeroUnit{};
+std::atomic<std::uint64_t> g_v2P1FirstZeroSampleTimeBits{};
+std::atomic<std::uint32_t> g_v2P1FirstZeroBus{};
+std::atomic<std::uint32_t> g_v2P1FirstZeroFrames{};
+std::atomic<std::uint64_t> g_v2P1FirstNonZeroQpc{};
+std::atomic<std::uint64_t> g_v2P1LastNonZeroQpc{};
+std::atomic<std::uint64_t> g_v2P1FirstNonZeroCall{};
+std::atomic<std::uint64_t> g_v2P1FirstNonZeroUnit{};
+std::atomic<std::uint64_t> g_v2P1FirstNonZeroSampleTimeBits{};
+std::atomic<std::uint32_t> g_v2P1FirstNonZeroBus{};
+std::atomic<std::uint32_t> g_v2P1FirstNonZeroFrames{};
 std::atomic<std::uint64_t> g_v2P1RepeatedSignatureCalls{};
 std::atomic<std::uint64_t> g_v2P1TimestampMissingCalls{};
 std::atomic<std::uint64_t> g_v2P1TimestampRepeatedCalls{};
@@ -2058,6 +2072,41 @@ void AudioCoreRuntimeEventCallback(void*, const ammod::audio_v2::AudioCoreRuntim
         double lastSampleTime{};
         const auto lastSampleBits = g_v2P1LastSampleTimeBits.load(std::memory_order_acquire);
         std::memcpy(&lastSampleTime, &lastSampleBits, sizeof(lastSampleTime));
+        double firstZeroSampleTime{};
+        const auto firstZeroSampleBits =
+            g_v2P1FirstZeroSampleTimeBits.load(std::memory_order_acquire);
+        std::memcpy(&firstZeroSampleTime, &firstZeroSampleBits, sizeof(firstZeroSampleTime));
+        double firstNonZeroSampleTime{};
+        const auto firstNonZeroSampleBits =
+            g_v2P1FirstNonZeroSampleTimeBits.load(std::memory_order_acquire);
+        std::memcpy(&firstNonZeroSampleTime, &firstNonZeroSampleBits,
+                    sizeof(firstNonZeroSampleTime));
+        Log(L"audio core v2 p1 boundary firstZeroQpc=" +
+            std::to_wstring(g_v2P1FirstZeroQpc.load(std::memory_order_acquire)) +
+            L" lastZeroQpc=" +
+            std::to_wstring(g_v2P1LastZeroQpc.load(std::memory_order_acquire)) +
+            L" firstZeroCall=" +
+            std::to_wstring(g_v2P1FirstZeroCall.load(std::memory_order_acquire)) +
+            L" firstZeroUnit=" +
+            std::to_wstring(g_v2P1FirstZeroUnit.load(std::memory_order_acquire)) +
+            L" firstZeroBus=" +
+            std::to_wstring(g_v2P1FirstZeroBus.load(std::memory_order_acquire)) +
+            L" firstZeroFrames=" +
+            std::to_wstring(g_v2P1FirstZeroFrames.load(std::memory_order_acquire)) +
+            L" firstZeroSampleTime=" + std::to_wstring(firstZeroSampleTime) +
+            L" firstNonZeroQpc=" +
+            std::to_wstring(g_v2P1FirstNonZeroQpc.load(std::memory_order_acquire)) +
+            L" lastNonZeroQpc=" +
+            std::to_wstring(g_v2P1LastNonZeroQpc.load(std::memory_order_acquire)) +
+            L" firstNonZeroCall=" +
+            std::to_wstring(g_v2P1FirstNonZeroCall.load(std::memory_order_acquire)) +
+            L" firstNonZeroUnit=" +
+            std::to_wstring(g_v2P1FirstNonZeroUnit.load(std::memory_order_acquire)) +
+            L" firstNonZeroBus=" +
+            std::to_wstring(g_v2P1FirstNonZeroBus.load(std::memory_order_acquire)) +
+            L" firstNonZeroFrames=" +
+            std::to_wstring(g_v2P1FirstNonZeroFrames.load(std::memory_order_acquire)) +
+            L" firstNonZeroSampleTime=" + std::to_wstring(firstNonZeroSampleTime));
         Log(L"audio core v2 p1 telemetry observedRenderCalls=" +
             std::to_wstring(g_v2ObservedRenderCalls.load(std::memory_order_acquire)) +
             L" signatureValid=" +
@@ -3213,8 +3262,40 @@ AppleOSStatus __cdecl HookV2AudioUnitRender(void* unit, std::uint32_t* actionFla
             g_v2P1SignatureValidCalls.fetch_add(1, std::memory_order_relaxed);
             if (signature.allZero) {
                 g_v2P1SignatureAllZeroCalls.fetch_add(1, std::memory_order_relaxed);
+                g_v2P1LastZeroQpc.store(static_cast<std::uint64_t>(returnQpc),
+                                        std::memory_order_release);
+                std::uint64_t empty{};
+                if (g_v2P1FirstZeroQpc.compare_exchange_strong(
+                        empty, static_cast<std::uint64_t>(returnQpc),
+                        std::memory_order_acq_rel, std::memory_order_relaxed)) {
+                    g_v2P1FirstZeroCall.store(call, std::memory_order_relaxed);
+                    g_v2P1FirstZeroUnit.store(
+                        reinterpret_cast<std::uintptr_t>(unit), std::memory_order_relaxed);
+                    g_v2P1FirstZeroBus.store(bus, std::memory_order_relaxed);
+                    g_v2P1FirstZeroFrames.store(frames, std::memory_order_relaxed);
+                    g_v2P1FirstZeroSampleTimeBits.store(
+                        hasTimestamp && std::isfinite(observed.mSampleTime)
+                            ? DoubleBits(observed.mSampleTime) : 0,
+                        std::memory_order_release);
+                }
             } else {
                 g_v2P1SignatureNonZeroCalls.fetch_add(1, std::memory_order_relaxed);
+                g_v2P1LastNonZeroQpc.store(static_cast<std::uint64_t>(returnQpc),
+                                          std::memory_order_release);
+                std::uint64_t empty{};
+                if (g_v2P1FirstNonZeroQpc.compare_exchange_strong(
+                        empty, static_cast<std::uint64_t>(returnQpc),
+                        std::memory_order_acq_rel, std::memory_order_relaxed)) {
+                    g_v2P1FirstNonZeroCall.store(call, std::memory_order_relaxed);
+                    g_v2P1FirstNonZeroUnit.store(
+                        reinterpret_cast<std::uintptr_t>(unit), std::memory_order_relaxed);
+                    g_v2P1FirstNonZeroBus.store(bus, std::memory_order_relaxed);
+                    g_v2P1FirstNonZeroFrames.store(frames, std::memory_order_relaxed);
+                    g_v2P1FirstNonZeroSampleTimeBits.store(
+                        hasTimestamp && std::isfinite(observed.mSampleTime)
+                            ? DoubleBits(observed.mSampleTime) : 0,
+                        std::memory_order_release);
+                }
             }
             g_v2P1LastSignature.store(signature.signature, std::memory_order_release);
             g_v2P1LastSignatureBytes.store(signature.hashedBytes, std::memory_order_release);
