@@ -927,10 +927,10 @@ bool AudioCoreRuntime::ArmProvisionalPendingCaptureLocked(
         coordinator_.Phase() != AudioCoreGatePhase::Off ||
         endOfStreamDrainPending_ || streamingProducerDrainPending_ ||
         seekFence_ || graphConverter_ || graphSourceBits_ != 0 ||
-        graphObservationId_ != 0 || graphRate_ < 8000 || graphRate_ > 768000 ||
+        graphObservationId_ == 0 || registration.observationId != graphObservationId_ ||
+        graphRate_ < 8000 || graphRate_ > 768000 ||
         graphChannels_ != 2 || registration.outputFormat.sampleRate != graphRate_ ||
         registration.outputFormat.channels != graphChannels_ ||
-        registration.observationId == 0 ||
         (registration.encodedFormat != kAlac && registration.encodedFormat != kQlac) ||
         registration.sourceBitDepth > UINT16_MAX ||
         !IsSupportedSourceDepth(static_cast<std::uint16_t>(registration.sourceBitDepth)) ||
