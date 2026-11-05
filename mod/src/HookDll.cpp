@@ -225,6 +225,8 @@ std::atomic<bool> g_audioCoreV2HooksInstalled{};
 std::atomic<bool> g_nativeTraceEnabled{};
 std::atomic<std::uint64_t> g_nativeTraceFillCalls{};
 std::atomic<std::uint64_t> g_nativeTracePropertyCalls{};
+std::atomic<std::uint64_t> g_nativeTraceP0FillCalls{};
+std::atomic<std::uint64_t> g_nativeTraceP0NonEmptyCalls{};
 std::atomic<void*> g_resumeP0TraceConverter{};
 std::atomic<ULONGLONG> g_resumeP0TraceUntilTick{};
 std::atomic<std::uint64_t> g_resumeP0TraceWatermark{};
@@ -2645,6 +2647,8 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
     const auto localQueue = FindV2LocalQueue(converter);
     const auto traceCall = nativeTrace
         ? g_nativeTraceFillCalls.fetch_add(1, std::memory_order_relaxed) + 1 : 0;
+    const auto p0TraceCall = nativeTrace && p0Candidate
+        ? g_nativeTraceP0FillCalls.fetch_add(1, std::memory_order_relaxed) + 1 : 0;
     const auto requestedPackets = outputPackets ? *outputPackets : 0u;
     const auto resumeTraceConverter = g_resumeP0TraceConverter.load(std::memory_order_acquire);
     const auto resumeTraceUntil = g_resumeP0TraceUntilTick.load(std::memory_order_acquire);
@@ -2740,11 +2744,36 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
             wrapInput ? static_cast<void*>(&inputContext) : inputUserData,
             outputPackets, outputData, packetDescriptions) : -1;
     const auto producedPackets = outputPackets ? *outputPackets : 0u;
+    const auto p0NonEmptyCall = nativeTrace && p0Candidate && producedPackets != 0
+        ? g_nativeTraceP0NonEmptyCalls.fetch_add(1, std::memory_order_relaxed) + 1 : 0;
+    const auto fillReturnQpc = (nativeTrace && p0Candidate) ? CurrentQpc() : 0;
     if (p0Candidate) {
         // Capture the real callback/user-data pair even when this particular
         // Fill has no decoded frames.  Binding can complete on a later graph
         // event, while the pair remains valid for the same converter.
         g_nativeP0Puller.ObserveNativeFill(converter, inputProc, inputUserData, requestedPackets);
+    }
+    if (p0TraceCall != 0 &&
+        (p0TraceCall <= 16 || (p0NonEmptyCall != 0 && p0NonEmptyCall <= 32))) {
+        const auto outputShape = InspectNativeTraceBuffers(outputData);
+        Log(L"native trace P0 fill converter=" +
+            std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
+            L" p0Call=" + std::to_wstring(p0TraceCall) +
+            L" nonEmptyCall=" + std::to_wstring(p0NonEmptyCall) +
+            L" inputProc=" + std::to_wstring(reinterpret_cast<std::uintptr_t>(inputProc)) +
+            L" inputUserData=" + std::to_wstring(reinterpret_cast<std::uintptr_t>(inputUserData)) +
+            L" requestedPackets=" + std::to_wstring(requestedPackets) +
+            L" producedPackets=" + std::to_wstring(producedPackets) +
+            L" result=" + std::to_wstring(result) +
+            L" outputBuffers=" + std::to_wstring(outputShape.bufferCount) +
+            L" outputFirstBytes=" + std::to_wstring(outputShape.firstBytes) +
+            L" inputCalls=" + std::to_wstring(inputContext.inputCalls) +
+            L" inputLastReturned=" + std::to_wstring(inputContext.lastReturned) +
+            L" inputLastResult=" + std::to_wstring(inputContext.lastResult) +
+            L" inputFirstOffset=" + std::to_wstring(inputContext.lastPackets.firstOffset) +
+            L" inputFirstPacketFrames=" + std::to_wstring(inputContext.lastPackets.firstFrames) +
+            L" enterQpc=" + std::to_wstring(enterQpc) +
+            L" returnQpc=" + std::to_wstring(fillReturnQpc));
     }
     if (resumeP0Trace && (resumeP0TraceSample || producedPackets != 0)) {
         const auto returnQpc = CurrentQpc();
