@@ -862,6 +862,35 @@ struct V2P1SignatureSlot {
     std::atomic<std::uint64_t> lastSampleTimeBits{};
     std::atomic<std::uint64_t> lastHostTime{};
     std::atomic<std::uint32_t> lastFrames{};
+    // Per-AudioUnit P1 boundaries. Written on the render thread only while
+    // native_trace is enabled; read from the telemetry worker.
+    std::atomic<std::uint64_t> unitAddress{};
+    std::atomic<std::uint32_t> bus{};
+    std::atomic<std::uint64_t> renderCalls{};
+    std::atomic<std::uint64_t> renderErrorCalls{};
+    std::atomic<std::uint64_t> zeroCalls{};
+    std::atomic<std::uint64_t> nonZeroCalls{};
+    std::atomic<std::uint64_t> firstRenderQpc{};
+    std::atomic<std::uint64_t> lastRenderQpc{};
+    std::atomic<std::uint64_t> firstZeroQpc{};
+    std::atomic<std::uint64_t> lastZeroQpc{};
+    std::atomic<std::uint64_t> firstZeroCall{};
+    std::atomic<std::uint64_t> lastZeroCall{};
+    std::atomic<std::uint64_t> firstZeroSampleTimeBits{};
+    std::atomic<std::uint32_t> firstZeroFrames{};
+    std::atomic<std::uint32_t> lastZeroFrames{};
+    std::atomic<std::uint64_t> firstNonZeroQpc{};
+    std::atomic<std::uint64_t> lastNonZeroQpc{};
+    std::atomic<std::uint64_t> firstNonZeroCall{};
+    std::atomic<std::uint64_t> lastNonZeroCall{};
+    std::atomic<std::uint64_t> firstNonZeroSampleTimeBits{};
+    std::atomic<std::uint32_t> firstNonZeroFrames{};
+    std::atomic<std::uint32_t> lastNonZeroFrames{};
+    std::atomic<std::uint64_t> lastSampleTimeBits{};
+    std::atomic<std::uint64_t> lastHostTime{};
+    std::atomic<std::uint64_t> repeatedSignatureCalls{};
+    std::atomic<std::uint64_t> timestampRepeatedCalls{};
+    std::atomic<std::uint64_t> timestampDiscontinuityCalls{};
 };
 std::array<V2P1SignatureSlot, 32> g_v2P1SignatureSlots{};
 std::atomic<std::uint64_t> g_v2NativeGetBufferCalls{};
@@ -1182,15 +1211,24 @@ V2P1SignatureSlot* FindV2P1SignatureSlot(void* unit, std::uint32_t bus) noexcept
     auto key = (static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(unit)) >> 4) ^
         (static_cast<std::uint64_t>(bus) + 0x9E3779B97F4A7C15ULL);
     if (key == 0) key = 1;
+    const auto unitAddress = static_cast<std::uint64_t>(
+        reinterpret_cast<std::uintptr_t>(unit));
     const auto start = static_cast<std::size_t>(key % g_v2P1SignatureSlots.size());
     for (std::size_t probe = 0; probe < g_v2P1SignatureSlots.size(); ++probe) {
         auto& slot = g_v2P1SignatureSlots[(start + probe) % g_v2P1SignatureSlots.size()];
         auto observed = slot.key.load(std::memory_order_acquire);
-        if (observed == key) return &slot;
+        if (observed == key) {
+            // Prevent a hash collision from merging two AudioUnits/buses.
+            if (slot.unitAddress.load(std::memory_order_acquire) == unitAddress &&
+                slot.bus.load(std::memory_order_acquire) == bus) return &slot;
+            continue;
+        }
         if (observed == 0) {
             if (slot.key.compare_exchange_strong(observed, key,
                                                   std::memory_order_acq_rel,
                                                   std::memory_order_acquire)) {
+                slot.unitAddress.store(unitAddress, std::memory_order_release);
+                slot.bus.store(bus, std::memory_order_release);
                 slot.sequence.store(0, std::memory_order_release);
                 slot.lastSignature.store(0, std::memory_order_release);
                 slot.lastSampleTimeBits.store(0, std::memory_order_release);
@@ -2107,6 +2145,80 @@ void AudioCoreRuntimeEventCallback(void*, const ammod::audio_v2::AudioCoreRuntim
             L" firstNonZeroFrames=" +
             std::to_wstring(g_v2P1FirstNonZeroFrames.load(std::memory_order_acquire)) +
             L" firstNonZeroSampleTime=" + std::to_wstring(firstNonZeroSampleTime));
+        // The process-wide boundary above can mix different graph instances.
+        // Emit one independent silence/non-silence timeline per AudioUnit/bus.
+        for (auto& unitSlot : g_v2P1SignatureSlots) {
+            if (unitSlot.key.load(std::memory_order_acquire) == 0) continue;
+            const auto unitAddress = unitSlot.unitAddress.load(std::memory_order_acquire);
+            if (unitAddress == 0) continue;
+            const auto zeroCalls = unitSlot.zeroCalls.load(std::memory_order_acquire);
+            const auto nonZeroCalls = unitSlot.nonZeroCalls.load(std::memory_order_acquire);
+            if (zeroCalls == 0 && nonZeroCalls == 0) continue;
+
+            double unitFirstZeroSampleTime{};
+            const auto unitFirstZeroSampleBits =
+                unitSlot.firstZeroSampleTimeBits.load(std::memory_order_acquire);
+            std::memcpy(&unitFirstZeroSampleTime, &unitFirstZeroSampleBits,
+                        sizeof(unitFirstZeroSampleTime));
+            double unitFirstNonZeroSampleTime{};
+            const auto unitFirstNonZeroSampleBits =
+                unitSlot.firstNonZeroSampleTimeBits.load(std::memory_order_acquire);
+            std::memcpy(&unitFirstNonZeroSampleTime, &unitFirstNonZeroSampleBits,
+                        sizeof(unitFirstNonZeroSampleTime));
+            double unitLastSampleTime{};
+            const auto unitLastSampleBits =
+                unitSlot.lastSampleTimeBits.load(std::memory_order_acquire);
+            std::memcpy(&unitLastSampleTime, &unitLastSampleBits,
+                        sizeof(unitLastSampleTime));
+
+            Log(L"audio core v2 p1 unit boundary unit=" + std::to_wstring(unitAddress) +
+                L" bus=" + std::to_wstring(unitSlot.bus.load(std::memory_order_acquire)) +
+                L" renderCalls=" +
+                    std::to_wstring(unitSlot.renderCalls.load(std::memory_order_acquire)) +
+                L" renderErrors=" +
+                    std::to_wstring(unitSlot.renderErrorCalls.load(std::memory_order_acquire)) +
+                L" firstRenderQpc=" +
+                    std::to_wstring(unitSlot.firstRenderQpc.load(std::memory_order_acquire)) +
+                L" lastRenderQpc=" +
+                    std::to_wstring(unitSlot.lastRenderQpc.load(std::memory_order_acquire)) +
+                L" zeroCalls=" + std::to_wstring(zeroCalls) +
+                L" firstZeroQpc=" +
+                    std::to_wstring(unitSlot.firstZeroQpc.load(std::memory_order_acquire)) +
+                L" lastZeroQpc=" +
+                    std::to_wstring(unitSlot.lastZeroQpc.load(std::memory_order_acquire)) +
+                L" firstZeroCall=" +
+                    std::to_wstring(unitSlot.firstZeroCall.load(std::memory_order_acquire)) +
+                L" lastZeroCall=" +
+                    std::to_wstring(unitSlot.lastZeroCall.load(std::memory_order_acquire)) +
+                L" firstZeroFrames=" +
+                    std::to_wstring(unitSlot.firstZeroFrames.load(std::memory_order_acquire)) +
+                L" lastZeroFrames=" +
+                    std::to_wstring(unitSlot.lastZeroFrames.load(std::memory_order_acquire)) +
+                L" firstZeroSampleTime=" + std::to_wstring(unitFirstZeroSampleTime) +
+                L" nonZeroCalls=" + std::to_wstring(nonZeroCalls) +
+                L" firstNonZeroQpc=" +
+                    std::to_wstring(unitSlot.firstNonZeroQpc.load(std::memory_order_acquire)) +
+                L" lastNonZeroQpc=" +
+                    std::to_wstring(unitSlot.lastNonZeroQpc.load(std::memory_order_acquire)) +
+                L" firstNonZeroCall=" +
+                    std::to_wstring(unitSlot.firstNonZeroCall.load(std::memory_order_acquire)) +
+                L" lastNonZeroCall=" +
+                    std::to_wstring(unitSlot.lastNonZeroCall.load(std::memory_order_acquire)) +
+                L" firstNonZeroFrames=" +
+                    std::to_wstring(unitSlot.firstNonZeroFrames.load(std::memory_order_acquire)) +
+                L" lastNonZeroFrames=" +
+                    std::to_wstring(unitSlot.lastNonZeroFrames.load(std::memory_order_acquire)) +
+                L" firstNonZeroSampleTime=" + std::to_wstring(unitFirstNonZeroSampleTime) +
+                L" lastSampleTime=" + std::to_wstring(unitLastSampleTime) +
+                L" lastHostTime=" +
+                    std::to_wstring(unitSlot.lastHostTime.load(std::memory_order_acquire)) +
+                L" repeatedSignatures=" +
+                    std::to_wstring(unitSlot.repeatedSignatureCalls.load(std::memory_order_acquire)) +
+                L" repeatedTimestamps=" +
+                    std::to_wstring(unitSlot.timestampRepeatedCalls.load(std::memory_order_acquire)) +
+                L" timestampDiscontinuities=" +
+                    std::to_wstring(unitSlot.timestampDiscontinuityCalls.load(std::memory_order_acquire)));
+        }
         Log(L"audio core v2 p1 telemetry observedRenderCalls=" +
             std::to_wstring(g_v2ObservedRenderCalls.load(std::memory_order_acquire)) +
             L" signatureValid=" +
@@ -3222,10 +3334,30 @@ AppleOSStatus __cdecl HookV2AudioUnitRender(void* unit, std::uint32_t* actionFla
         const auto previousSampleTimeBits =
             slot->lastSampleTimeBits.load(std::memory_order_acquire);
         const auto previousFrames = slot->lastFrames.load(std::memory_order_acquire);
+        slot->renderCalls.fetch_add(1, std::memory_order_relaxed);
+        slot->lastRenderQpc.store(static_cast<std::uint64_t>(returnQpc),
+                                  std::memory_order_release);
+        if (previousSequence == 0) {
+            std::uint64_t empty{};
+            slot->firstRenderQpc.compare_exchange_strong(
+                empty, static_cast<std::uint64_t>(returnQpc),
+                std::memory_order_acq_rel, std::memory_order_relaxed);
+        }
+        if (result != 0) {
+            slot->renderErrorCalls.fetch_add(1, std::memory_order_relaxed);
+        }
+        if (hasTimestamp && std::isfinite(observed.mSampleTime)) {
+            slot->lastSampleTimeBits.store(DoubleBits(observed.mSampleTime),
+                                           std::memory_order_release);
+        }
+        if (hasTimestamp) {
+            slot->lastHostTime.store(observed.mHostTime, std::memory_order_release);
+        }
         if (previousSequence != 0 && signatureAttempted && signature.valid &&
             previousSignature != 0 && previousSignature == signature.signature) {
             repeatedSignature = true;
             g_v2P1RepeatedSignatureCalls.fetch_add(1, std::memory_order_relaxed);
+            slot->repeatedSignatureCalls.fetch_add(1, std::memory_order_relaxed);
         }
         const auto sampleTimeBits = hasTimestamp ? DoubleBits(observed.mSampleTime) : 0;
         if (previousSequence != 0 && hasTimestamp && previousSampleTimeBits != 0 &&
@@ -3235,12 +3367,14 @@ AppleOSStatus __cdecl HookV2AudioUnitRender(void* unit, std::uint32_t* actionFla
                 repeatedTimestamp = previousSampleTimeBits == sampleTimeBits;
                 if (repeatedTimestamp) {
                     g_v2P1TimestampRepeatedCalls.fetch_add(1, std::memory_order_relaxed);
+                    slot->timestampRepeatedCalls.fetch_add(1, std::memory_order_relaxed);
                 }
                 if (previousFrames != 0 &&
                     std::abs((observed.mSampleTime - previousSampleTime) -
                              static_cast<double>(previousFrames)) > 0.5) {
                     timestampDiscontinuity = true;
                     g_v2P1TimestampDiscontinuities.fetch_add(1, std::memory_order_relaxed);
+                    slot->timestampDiscontinuityCalls.fetch_add(1, std::memory_order_relaxed);
                 }
             }
         }
@@ -3262,6 +3396,24 @@ AppleOSStatus __cdecl HookV2AudioUnitRender(void* unit, std::uint32_t* actionFla
             g_v2P1SignatureValidCalls.fetch_add(1, std::memory_order_relaxed);
             if (signature.allZero) {
                 g_v2P1SignatureAllZeroCalls.fetch_add(1, std::memory_order_relaxed);
+                if (slot) {
+                    slot->zeroCalls.fetch_add(1, std::memory_order_relaxed);
+                    slot->lastZeroQpc.store(static_cast<std::uint64_t>(returnQpc),
+                                            std::memory_order_release);
+                    slot->lastZeroCall.store(call, std::memory_order_release);
+                    slot->lastZeroFrames.store(frames, std::memory_order_release);
+                    std::uint64_t empty{};
+                    if (slot->firstZeroQpc.compare_exchange_strong(
+                            empty, static_cast<std::uint64_t>(returnQpc),
+                            std::memory_order_acq_rel, std::memory_order_relaxed)) {
+                        slot->firstZeroCall.store(call, std::memory_order_relaxed);
+                        slot->firstZeroFrames.store(frames, std::memory_order_relaxed);
+                        slot->firstZeroSampleTimeBits.store(
+                            hasTimestamp && std::isfinite(observed.mSampleTime)
+                                ? DoubleBits(observed.mSampleTime) : 0,
+                            std::memory_order_release);
+                    }
+                }
                 g_v2P1LastZeroQpc.store(static_cast<std::uint64_t>(returnQpc),
                                         std::memory_order_release);
                 std::uint64_t empty{};
@@ -3280,6 +3432,24 @@ AppleOSStatus __cdecl HookV2AudioUnitRender(void* unit, std::uint32_t* actionFla
                 }
             } else {
                 g_v2P1SignatureNonZeroCalls.fetch_add(1, std::memory_order_relaxed);
+                if (slot) {
+                    slot->nonZeroCalls.fetch_add(1, std::memory_order_relaxed);
+                    slot->lastNonZeroQpc.store(static_cast<std::uint64_t>(returnQpc),
+                                               std::memory_order_release);
+                    slot->lastNonZeroCall.store(call, std::memory_order_release);
+                    slot->lastNonZeroFrames.store(frames, std::memory_order_release);
+                    std::uint64_t empty{};
+                    if (slot->firstNonZeroQpc.compare_exchange_strong(
+                            empty, static_cast<std::uint64_t>(returnQpc),
+                            std::memory_order_acq_rel, std::memory_order_relaxed)) {
+                        slot->firstNonZeroCall.store(call, std::memory_order_relaxed);
+                        slot->firstNonZeroFrames.store(frames, std::memory_order_relaxed);
+                        slot->firstNonZeroSampleTimeBits.store(
+                            hasTimestamp && std::isfinite(observed.mSampleTime)
+                                ? DoubleBits(observed.mSampleTime) : 0,
+                            std::memory_order_release);
+                    }
+                }
                 g_v2P1LastNonZeroQpc.store(static_cast<std::uint64_t>(returnQpc),
                                           std::memory_order_release);
                 std::uint64_t empty{};
