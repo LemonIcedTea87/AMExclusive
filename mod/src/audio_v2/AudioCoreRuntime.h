@@ -106,6 +106,20 @@ struct AudioCoreRuntimeStats final {
     std::uint32_t requiredPrebufferFrames{};
     std::uint64_t resumeProducerFrames{};
     std::uint64_t resumeProducerIntentQpc{}, lastAcceptedP0Qpc{};
+    void* graphUnit{};
+    void* graphConverter{};
+    std::uint64_t graphObservationId{};
+    void* pendingGraphBindConverter{};
+    std::uint64_t pendingGraphBindObservationId{}, pendingGraphBindRegistrationId{};
+    void* startupP0Converter{};
+    std::uint64_t startupP0RegistrationId{}, startupP0ObservationId{};
+    std::uint64_t startupP0FirstOutputQpc{}, startupP0FirstOutputPackets{};
+    std::uint64_t startupP0FirstOutputFrames{};
+    std::uint64_t startupP0FirstStageQpc{}, startupP0FirstStageFrame{};
+    std::uint64_t startupP0StagedCalls{}, startupP0StagedFrames{};
+    std::uint64_t startupP0FirstPromoteQpc{}, startupP0PromotedBlocks{};
+    std::uint64_t startupP0PromotedFrames{}, startupP0FirstPromotedRelativeFrame{};
+    std::uint64_t startupP0FirstBoundQpc{}, startupP0FirstBoundFrames{};
     bool uiEnabled{}, graphBound{}, graphStarted{};
     bool graphPaused{}, graphControlPending{}, userPauseIntent{};
     bool resumePrebufferPending{}, resumeProducerPending{};
@@ -114,6 +128,7 @@ struct AudioCoreRuntimeStats final {
     bool streamingProducerDrainPending{}, endOfStreamDrainPending{};
     bool hasNativeClient{}, hasNativeOutputUnit{}, hasPrepareNativeHandoff{};
     bool nativeHandoffPending{}, nativeGraphHandoffPending{};
+    bool startupP0FirstOutputWasBound{}, startupP0HasPromotion{};
 };
 
 struct AudioCoreRuntimeEventSnapshot final {
@@ -282,7 +297,8 @@ private:
     void ArmPendingCaptureLocked(const ConverterRegistrationSnapshot&) noexcept;
     void ClearPendingCaptureLocked() noexcept;
     bool StagePendingPcm(const ConverterRegistrationSnapshot&, const ApplePcmFormatView&,
-                         const ApplePcmBufferListView&, std::uint32_t) noexcept;
+                         const ApplePcmBufferListView&, std::uint32_t,
+                         std::uint64_t producerCallbackQpc) noexcept;
     bool PromotePendingPcmLocked(void*) noexcept;
     // Scoped controlMutex_ ownership that wakes the worker on release when
     // events were queued. Every controlMutex_ acquisition in the runtime goes
@@ -361,6 +377,27 @@ private:
     // producer. Compared with UI transport QPC to retain PCM that arrived
     // after the click but before its IPC reached the runtime thread.
     std::atomic<std::uint64_t> lastAcceptedP0Qpc_{};
+    // First compressed P0 startup path only. Callback-side updates are atomic;
+    // immutable snapshots are emitted later by the existing control telemetry.
+    std::atomic<bool> startupP0Ready_{};
+    std::atomic<void*> startupP0Converter_{};
+    std::atomic<std::uint64_t> startupP0RegistrationId_{};
+    std::atomic<std::uint64_t> startupP0ObservationId_{};
+    std::atomic<std::uint64_t> startupP0FirstOutputQpc_{};
+    std::atomic<std::uint64_t> startupP0FirstOutputPackets_{};
+    std::atomic<std::uint64_t> startupP0FirstOutputFrames_{};
+    std::atomic<bool> startupP0FirstOutputWasBound_{};
+    std::atomic<std::uint64_t> startupP0FirstStageQpc_{};
+    std::atomic<std::uint64_t> startupP0FirstStageFrame_{};
+    std::atomic<std::uint64_t> startupP0StagedCalls_{};
+    std::atomic<std::uint64_t> startupP0StagedFrames_{};
+    std::atomic<std::uint64_t> startupP0FirstPromoteQpc_{};
+    std::atomic<bool> startupP0FirstPromotedFrameSeen_{};
+    std::atomic<std::uint64_t> startupP0FirstPromotedRelativeFrame_{};
+    std::atomic<std::uint64_t> startupP0PromotedBlocks_{};
+    std::atomic<std::uint64_t> startupP0PromotedFrames_{};
+    std::atomic<std::uint64_t> startupP0FirstBoundQpc_{};
+    std::atomic<std::uint64_t> startupP0FirstBoundFrames_{};
     std::atomic<void*> boundConverter_{};
     std::atomic<void*> nativeClient_{};
     std::atomic<bool> nativeHandoffPending_{};
