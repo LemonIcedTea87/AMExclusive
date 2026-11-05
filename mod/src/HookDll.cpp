@@ -227,6 +227,7 @@ std::atomic<std::uint64_t> g_nativeTraceFillCalls{};
 std::atomic<std::uint64_t> g_nativeTracePropertyCalls{};
 std::atomic<std::uint64_t> g_nativeTraceP0FillCalls{};
 std::atomic<std::uint64_t> g_nativeTraceP0NonEmptyCalls{};
+std::atomic<std::uint64_t> g_p0CursorDiagnosticCalls{};
 std::atomic<void*> g_resumeP0TraceConverter{};
 std::atomic<ULONGLONG> g_resumeP0TraceUntilTick{};
 std::atomic<std::uint64_t> g_resumeP0TraceWatermark{};
@@ -2441,6 +2442,14 @@ AppleOSStatus __cdecl HookV2AudioConverterSetProperty(void* converter,
             L" stack=" +
             CaptureCurrentStackText(2, 6));
     }
+    if (propertyId == ammod::apple_private::audio_converter_property::kCursor &&
+        g_audioCoreRuntime.UiEnabled() && g_audioCoreRuntime.IsP0Converter(converter) &&
+        g_p0CursorDiagnosticCalls.fetch_add(1, std::memory_order_relaxed) < 48) {
+        Log(L"v2 P0 cursor SET converter=" +
+            std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
+            L" size=" + std::to_wstring(dataSize) + L" result=" + std::to_wstring(result) +
+            NativeTraceScalarText(data, dataSize) + L" qpc=" + std::to_wstring(CurrentQpc()));
+    }
     if (result == 0 && g_audioCoreRuntime.UiEnabled()) {
         ObserveAudioConverterProperty(L"SetProperty", converter, propertyId, data, dataSize,
                                       result);
@@ -2567,6 +2576,16 @@ AppleOSStatus __cdecl HookV2AudioConverterGetProperty(void* converter,
             L" result=" + std::to_wstring(result) + NativeTraceScalarText(
                 data, dataSize ? *dataSize : 0) + L" stack=" +
             CaptureCurrentStackText(2, 6));
+    }
+    if (propertyId == ammod::apple_private::audio_converter_property::kCursor &&
+        g_audioCoreRuntime.UiEnabled() && g_audioCoreRuntime.IsP0Converter(converter) &&
+        g_p0CursorDiagnosticCalls.fetch_add(1, std::memory_order_relaxed) < 48) {
+        Log(L"v2 P0 cursor GET converter=" +
+            std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
+            L" size=" + std::to_wstring(dataSize ? *dataSize : 0) +
+            L" result=" + std::to_wstring(result) +
+            NativeTraceScalarText(data, dataSize ? *dataSize : 0) +
+            L" qpc=" + std::to_wstring(CurrentQpc()));
     }
     if (result == 0 && g_audioCoreRuntime.UiEnabled() && data && dataSize &&
         *dataSize >= sizeof(AudioStreamBasicDescription) &&
