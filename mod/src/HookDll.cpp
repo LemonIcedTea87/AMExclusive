@@ -2018,6 +2018,40 @@ void AudioCoreRuntimeEventCallback(void*, const ammod::audio_v2::AudioCoreRuntim
             L" acceptedFrames=" + std::to_wstring(fill.acceptedFrames) +
             L" lastFillResult=" + std::to_wstring(fill.lastResult) +
             L" lastProducedPackets=" + std::to_wstring(fill.lastProducedPackets));
+        if (stats.startupP0Converter) {
+            Log(L"audio core v2 P0 startup diagnostic converter=" +
+                std::to_wstring(reinterpret_cast<std::uintptr_t>(stats.startupP0Converter)) +
+                L" registrationId=" + std::to_wstring(stats.startupP0RegistrationId) +
+                L" observationId=" + std::to_wstring(stats.startupP0ObservationId) +
+                L" firstOutputQpc=" + std::to_wstring(stats.startupP0FirstOutputQpc) +
+                L" firstOutputPackets=" + std::to_wstring(stats.startupP0FirstOutputPackets) +
+                L" firstOutputFrames=" + std::to_wstring(stats.startupP0FirstOutputFrames) +
+                L" firstOutputWasBound=" + std::to_wstring(stats.startupP0FirstOutputWasBound) +
+                L" firstStageQpc=" + std::to_wstring(stats.startupP0FirstStageQpc) +
+                L" firstStageRelativeFrame=" + std::to_wstring(stats.startupP0FirstStageFrame) +
+                L" stagedCalls=" + std::to_wstring(stats.startupP0StagedCalls) +
+                L" stagedFrames=" + std::to_wstring(stats.startupP0StagedFrames) +
+                L" firstPromoteQpc=" + std::to_wstring(stats.startupP0FirstPromoteQpc) +
+                L" hasPromotion=" + std::to_wstring(stats.startupP0HasPromotion) +
+                L" promotedBlocks=" + std::to_wstring(stats.startupP0PromotedBlocks) +
+                L" promotedFrames=" + std::to_wstring(stats.startupP0PromotedFrames) +
+                L" firstPromotedRelativeFrame=" +
+                    std::to_wstring(stats.startupP0FirstPromotedRelativeFrame) +
+                L" firstBoundQpc=" + std::to_wstring(stats.startupP0FirstBoundQpc) +
+                L" firstBoundFrames=" + std::to_wstring(stats.startupP0FirstBoundFrames) +
+                L" graphUnit=" +
+                    std::to_wstring(reinterpret_cast<std::uintptr_t>(stats.graphUnit)) +
+                L" graphConverter=" +
+                    std::to_wstring(reinterpret_cast<std::uintptr_t>(stats.graphConverter)) +
+                L" graphObservationId=" + std::to_wstring(stats.graphObservationId) +
+                L" pendingGraphBindConverter=" +
+                    std::to_wstring(reinterpret_cast<std::uintptr_t>(
+                        stats.pendingGraphBindConverter)) +
+                L" pendingGraphBindObservationId=" +
+                    std::to_wstring(stats.pendingGraphBindObservationId) +
+                L" pendingGraphBindRegistrationId=" +
+                    std::to_wstring(stats.pendingGraphBindRegistrationId));
+        }
         double lastSampleTime{};
         const auto lastSampleBits = g_v2P1LastSampleTimeBits.load(std::memory_order_acquire);
         std::memcpy(&lastSampleTime, &lastSampleBits, sizeof(lastSampleTime));
