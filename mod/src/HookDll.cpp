@@ -227,6 +227,7 @@ std::atomic<std::uint64_t> g_nativeTraceFillCalls{};
 std::atomic<std::uint64_t> g_nativeTracePropertyCalls{};
 std::atomic<std::uint64_t> g_nativeTraceP0FillCalls{};
 std::atomic<std::uint64_t> g_nativeTraceP0NonEmptyCalls{};
+std::atomic<std::uint64_t> g_nativeTraceP0InputNonEmptyCalls{};
 std::atomic<std::uint64_t> g_p0CursorDiagnosticCalls{};
 std::atomic<void*> g_resumeP0TraceConverter{};
 std::atomic<ULONGLONG> g_resumeP0TraceUntilTick{};
@@ -1068,6 +1069,9 @@ struct NativeTraceBufferShape final {
 struct NativeTracePacketShape final {
     std::uintptr_t descriptions{};
     std::int64_t firstOffset{};
+    std::int64_t lastOffset{};
+    std::uint64_t totalPacketBytes{};
+    std::uint32_t packetCount{};
     std::uint32_t firstFrames{};
     std::uint32_t firstBytes{};
     bool firstValid{};
@@ -1098,9 +1102,15 @@ NativeTracePacketShape InspectNativeTraceInputPackets(void** descriptions,
         const auto* packets = static_cast<const AppleAudioStreamPacketDescription*>(*descriptions);
         shape.descriptions = reinterpret_cast<std::uintptr_t>(packets);
         if (packets && packetCount != 0) {
+            const auto inspectedPackets = std::min<std::uint32_t>(packetCount, 64u);
+            shape.packetCount = packetCount;
             shape.firstOffset = packets[0].mStartOffset;
             shape.firstFrames = packets[0].mVariableFramesInPacket;
             shape.firstBytes = packets[0].mDataByteSize;
+            shape.lastOffset = packets[inspectedPackets - 1].mStartOffset;
+            for (std::uint32_t index = 0; index < inspectedPackets; ++index) {
+                shape.totalPacketBytes += packets[index].mDataByteSize;
+            }
             shape.firstValid = true;
         }
     } __except (EXCEPTION_EXECUTE_HANDLER) {
@@ -1153,6 +1163,54 @@ void AppendP1Hash(std::uint64_t& hash, const void* data, std::size_t bytes) noex
 template <typename T>
 void AppendP1Scalar(std::uint64_t& hash, const T& value) noexcept {
     AppendP1Hash(hash, &value, sizeof(value));
+}
+
+struct NativeTracePayloadShape final {
+    std::uint64_t totalBytes{};
+    std::uint64_t hashedBytes{};
+    std::uint64_t signature{kFnv1aOffset};
+    std::uint32_t bufferCount{};
+    std::uint32_t nonEmptyBuffers{};
+    bool valid{};
+    bool complete{};
+};
+
+// Hash only a bounded prefix of input payloads for startup diagnostics. This
+// is read-only, never retains encoded content, and is guarded because the
+// callback's AudioBufferList is owned by Apple's decoder.
+NativeTracePayloadShape InspectNativeTracePayload(
+    const void* rawList, std::uint32_t maximumBytes = 65536u) noexcept {
+    NativeTracePayloadShape shape{};
+    if (!rawList) return shape;
+    shape.signature = kFnv1aOffset;
+    __try {
+        const auto* list = static_cast<const AppleAudioBufferList*>(rawList);
+        if (list->mNumberBuffers == 0 || list->mNumberBuffers > 8) return shape;
+        shape.bufferCount = list->mNumberBuffers;
+        shape.valid = true;
+        for (std::uint32_t index = 0; index < list->mNumberBuffers; ++index) {
+            const auto& buffer = list->mBuffers[index];
+            shape.totalBytes += buffer.mDataByteSize;
+            if (buffer.mDataByteSize == 0) continue;
+            if (!buffer.mData) {
+                shape.valid = false;
+                break;
+            }
+            ++shape.nonEmptyBuffers;
+            const auto remaining = static_cast<std::uint64_t>(maximumBytes) -
+                shape.hashedBytes;
+            const auto take = static_cast<std::size_t>(
+                std::min<std::uint64_t>(buffer.mDataByteSize, remaining));
+            if (take != 0) {
+                AppendP1Hash(shape.signature, buffer.mData, take);
+                shape.hashedBytes += take;
+            }
+        }
+        shape.complete = shape.valid && shape.hashedBytes == shape.totalBytes;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        shape = {};
+    }
+    return shape;
 }
 
 std::uint64_t DoubleBits(double value) noexcept {
@@ -2996,16 +3054,18 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
         void* converter{};
         std::uint64_t fillCall{};
         std::uint32_t inputCalls{};
+        bool p0Candidate{};
         NativeTraceBufferShape lastBuffers{};
         NativeTracePacketShape lastPackets{};
+        NativeTracePayloadShape lastPayload{};
         std::uint32_t lastRequested{};
         std::uint32_t lastReturned{};
         AppleOSStatus lastResult{};
         std::int64_t lastEnterQpc{};
         std::int64_t lastReturnQpc{};
         std::shared_ptr<LocalPcmQueue> localQueue;
-    } inputContext{inputProc, inputUserData, converter, traceCall, 0, {}, {}, 0, 0, 0, 0, 0,
-                   localQueue};
+    } inputContext{inputProc, inputUserData, converter, traceCall, 0, p0Candidate,
+                   {}, {}, {}, 0, 0, 0, 0, 0, localQueue};
     const auto proxyInput = +[](void* inputConverter, std::uint32_t* packets, void* data,
                                 void** descriptions, void* context) -> AppleOSStatus {
         auto* trace = static_cast<NativeInputTraceContext*>(context);
@@ -3023,6 +3083,7 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
         trace->lastReturnQpc = exit;
         trace->lastBuffers = InspectNativeTraceBuffers(data);
         trace->lastPackets = InspectNativeTraceInputPackets(descriptions, returned);
+        trace->lastPayload = InspectNativeTracePayload(data);
         if (result == 0 && trace->localQueue && data) {
             const auto* list = static_cast<const AppleAudioBufferList*>(data);
             if (list->mNumberBuffers == 1 && list->mBuffers[0].mData &&
@@ -3038,6 +3099,32 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
                     (void)DrainV2LocalQueue(trace->converter, trace->localQueue);
                 }
             }
+        }
+        if (g_nativeTraceEnabled.load(std::memory_order_acquire) &&
+            trace->p0Candidate && result == 0 && returned != 0 &&
+            g_nativeTraceP0InputNonEmptyCalls.fetch_add(1, std::memory_order_relaxed) < 16) {
+            Log(L"native trace P0 input payload converter=" +
+                std::to_wstring(reinterpret_cast<std::uintptr_t>(trace->converter)) +
+                L" fillCall=" + std::to_wstring(trace->fillCall) +
+                L" inputCall=" + std::to_wstring(trace->inputCalls) +
+                L" requestedPackets=" + std::to_wstring(requested) +
+                L" returnedPackets=" + std::to_wstring(returned) +
+                L" buffers=" + std::to_wstring(trace->lastPayload.bufferCount) +
+                L" nonEmptyBuffers=" + std::to_wstring(trace->lastPayload.nonEmptyBuffers) +
+                L" totalBytes=" + std::to_wstring(trace->lastPayload.totalBytes) +
+                L" hashedBytes=" + std::to_wstring(trace->lastPayload.hashedBytes) +
+                L" payloadHash=" + std::to_wstring(trace->lastPayload.signature) +
+                L" payloadValid=" + std::to_wstring(trace->lastPayload.valid) +
+                L" payloadComplete=" + std::to_wstring(trace->lastPayload.complete) +
+                L" packetCount=" + std::to_wstring(trace->lastPackets.packetCount) +
+                L" firstOffset=" + std::to_wstring(trace->lastPackets.firstOffset) +
+                L" lastOffset=" + std::to_wstring(trace->lastPackets.lastOffset) +
+                L" firstPacketFrames=" + std::to_wstring(trace->lastPackets.firstFrames) +
+                L" firstPacketBytes=" + std::to_wstring(trace->lastPackets.firstBytes) +
+                L" totalPacketBytes=" + std::to_wstring(trace->lastPackets.totalPacketBytes) +
+                L" result=" + std::to_wstring(result) +
+                L" enterQpc=" + std::to_wstring(enter) +
+                L" returnQpc=" + std::to_wstring(exit));
         }
         if (g_nativeTraceEnabled.load(std::memory_order_acquire) &&
             trace->inputCalls <= 16 &&
@@ -3154,8 +3241,17 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
             L" inputCalls=" + std::to_wstring(inputContext.inputCalls) +
             L" inputLastReturned=" + std::to_wstring(inputContext.lastReturned) +
             L" inputLastResult=" + std::to_wstring(inputContext.lastResult) +
+            L" inputDataBytes=" + std::to_wstring(inputContext.lastPayload.totalBytes) +
+            L" inputHashedBytes=" + std::to_wstring(inputContext.lastPayload.hashedBytes) +
+            L" inputPayloadHash=" + std::to_wstring(inputContext.lastPayload.signature) +
+            L" inputPayloadValid=" + std::to_wstring(inputContext.lastPayload.valid) +
+            L" inputPayloadComplete=" + std::to_wstring(inputContext.lastPayload.complete) +
+            L" inputPacketCount=" + std::to_wstring(inputContext.lastPackets.packetCount) +
             L" inputFirstOffset=" + std::to_wstring(inputContext.lastPackets.firstOffset) +
+            L" inputLastOffset=" + std::to_wstring(inputContext.lastPackets.lastOffset) +
             L" inputFirstPacketFrames=" + std::to_wstring(inputContext.lastPackets.firstFrames) +
+            L" inputFirstPacketBytes=" + std::to_wstring(inputContext.lastPackets.firstBytes) +
+            L" inputTotalPacketBytes=" + std::to_wstring(inputContext.lastPackets.totalPacketBytes) +
             L" enterQpc=" + std::to_wstring(enterQpc) +
             L" returnQpc=" + std::to_wstring(fillReturnQpc));
     }
