@@ -1174,7 +1174,7 @@ struct V2P0PcmSampleStats final {
     std::uint64_t zeroSamples{};
     std::uint64_t nonZeroSamples{};
     std::uint64_t nonFiniteSamples{};
-    std::uint64_t firstNonZeroFrame{};
+    std::uint64_t firstNonZeroFrame{UINT64_MAX};
     std::uint64_t inspectedFrames{};
     std::uint64_t signature{};
     double peakAbs{};
@@ -1272,13 +1272,10 @@ V2P0PcmSampleStats InspectV2P0PcmSamples(
         }
         const auto inspectedFrames = toScan / buffer.mNumberChannels;
         minimumInspectedFrames = std::min(minimumInspectedFrames, inspectedFrames);
-        if (firstNonZeroInBuffer != UINT64_MAX &&
-            (!stats.hasNonZero || firstNonZeroInBuffer < stats.firstNonZeroFrame ||
-             stats.samplesScanned == toScan)) {
+        if (firstNonZeroInBuffer != UINT64_MAX) {
             // The frame offset is per buffer; the earliest channel/frame wins.
-            stats.firstNonZeroFrame = stats.hasNonZero && stats.firstNonZeroFrame != 0
-                ? std::min(stats.firstNonZeroFrame, firstNonZeroInBuffer)
-                : firstNonZeroInBuffer;
+            stats.firstNonZeroFrame =
+                std::min(stats.firstNonZeroFrame, firstNonZeroInBuffer);
         }
         remainingBudget -= toScan;
     }
@@ -3114,7 +3111,8 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
                     L" zeroRatio=" + std::to_wstring(sampleRatio) +
                     L" hasNonZero=" + std::to_wstring(sampleStats.hasNonZero) +
                     L" firstNonZeroFrame=" +
-                        std::to_wstring(sampleStats.firstNonZeroFrame) +
+                        std::to_wstring(sampleStats.hasNonZero
+                            ? sampleStats.firstNonZeroFrame : 0) +
                     L" inspectedFramesPerChannel=" +
                         std::to_wstring(sampleStats.inspectedFrames) +
                     L" peakAbs=" + std::to_wstring(sampleStats.peakAbs) +
