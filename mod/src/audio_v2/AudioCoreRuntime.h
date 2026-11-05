@@ -224,6 +224,9 @@ public:
     // returns. It never waits, allocates, or takes the control mutex.
     void OnPcmFillResult(std::int32_t result, std::uint32_t producedPackets,
                         bool outputDataPresent, bool outputPacketsPresent) noexcept;
+    // Called after Apple's P0 Fill hook releases the producer mutex. This wakes
+    // a bind attempt that deferred on that mutex without polling the worker.
+    void NotifyProducerLeaseAvailable() noexcept;
     void RecordPcmReject(AudioCorePcmRejectReason reason) noexcept;
     bool OnPcmOutput(void* converter, const ApplePcmFormatView& format,
                      const ApplePcmBufferListView& list,
@@ -343,6 +346,7 @@ private:
     std::atomic<bool> uiEnabled_{};
     std::atomic<bool> workerStop_{};
     std::atomic<bool> abandoned_{};
+    std::atomic<bool> producerLeaseRetryPending_{};
     std::atomic<std::uint32_t> hardwareBufferMs_{20};
     std::atomic<bool> allowResampling_{};
     HANDLE wakeEvent_{};
