@@ -1201,7 +1201,7 @@ V2P0PcmTraceSlot* FindV2P0PcmTraceSlot(void* converter) noexcept {
     return nullptr;
 }
 
-V2P0PcmSampleStats InspectV2P0PcmSamples(
+V2P0PcmSampleStats InspectV2P0PcmSamplesUnchecked(
     const AppleAudioBufferList* list,
     const ammod::audio_v2::ApplePcmFormatView& format,
     std::uint32_t producedPackets) noexcept {
@@ -1286,6 +1286,22 @@ V2P0PcmSampleStats InspectV2P0PcmSamples(
     stats.inspectedFrames = minimumInspectedFrames == UINT64_MAX
         ? 0 : minimumInspectedFrames;
     if (stats.samplesScanned == 0) stats.valid = false;
+    return stats;
+}
+
+V2P0PcmSampleStats InspectV2P0PcmSamples(
+    const AppleAudioBufferList* list,
+    const ammod::audio_v2::ApplePcmFormatView& format,
+    std::uint32_t producedPackets) noexcept {
+    V2P0PcmSampleStats stats{};
+    // Bad or stale Apple buffer pointers must disable this diagnostic only,
+    // never take down the host playback process.
+    __try {
+        stats = InspectV2P0PcmSamplesUnchecked(list, format, producedPackets);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        stats.valid = false;
+        stats.complete = false;
+    }
     return stats;
 }
 
@@ -3100,8 +3116,7 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
                     L" bits=" + std::to_wstring(sampleFormat.bitsPerChannel) +
                     L" bytesPerFrame=" + std::to_wstring(sampleFormat.bytesPerFrame) +
                     L" buffers=" +
-                        std::to_wstring(static_cast<const AppleAudioBufferList*>(
-                            outputData)->mNumberBuffers) +
+                        std::to_wstring(InspectNativeTraceBuffers(outputData).bufferCount) +
                     L" inspectionValid=" + std::to_wstring(sampleStats.valid) +
                     L" inspectionComplete=" + std::to_wstring(sampleStats.complete) +
                     L" sampledFloats=" + std::to_wstring(sampleStats.samplesScanned) +
