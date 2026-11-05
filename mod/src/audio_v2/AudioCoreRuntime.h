@@ -402,9 +402,10 @@ private:
     void* sinkRecoveryConverter_{};
     std::uint64_t sinkRecoveryRegistrationId_{};
     std::uint32_t sinkRecoveryAttempts_{};
-    // Earned only when a distinct, observed successor is blocked by an old
-    // producer/endpoint drain. Consumed once after natural retirement; ordinary
-    // cancellation must never turn an unbound old graph into a retry request.
+    // Exact graph-scoped bind request for a selected converter that must wait
+    // for an old generation to drain or the P0 producer to become quiescent.
+    // The worker validates observation/registration identity before consuming
+    // it; cancellation paths clear it rather than retrying a stale graph.
     struct PendingGraphBind final {
         void* unit{};
         void* converter{};
