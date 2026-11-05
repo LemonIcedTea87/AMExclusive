@@ -888,6 +888,7 @@ bool AudioCoreRuntime::TryBindLocalSuccessor(void* converter) noexcept {
 }
 
 void AudioCoreRuntime::ClearPendingCaptureLocked() noexcept {
+    producerLeaseRetryPending_.store(false, std::memory_order_release);
     pendingDeferredConverter_.store(nullptr, std::memory_order_release);
     pendingCapture_.store(nullptr, std::memory_order_release);
     while (callbackDepth_.load(std::memory_order_acquire) != 0) SwitchToThread();
@@ -1623,6 +1624,14 @@ void AudioCoreRuntime::OnNativeClientReset(void* client, HRESULT result) noexcep
     if (nativeClient_.load(std::memory_order_acquire) != client) return;
     ExtendSeekQuietPeriodLocked();
     Wake();
+}
+
+void AudioCoreRuntime::NotifyProducerLeaseAvailable() noexcept {
+    if (producerLeaseRetryPending_.load(std::memory_order_acquire) &&
+        running_.load(std::memory_order_acquire) &&
+        !workerStop_.load(std::memory_order_acquire)) {
+        Wake();
+    }
 }
 
 void AudioCoreRuntime::OnPcmFillResult(std::int32_t result,
@@ -2667,7 +2676,14 @@ void AudioCoreRuntime::TryBindPendingGraphLocked() noexcept {
         snapshot.registration.observationId == pending.observationId &&
         snapshot.registrationId == pending.registrationId) {
         if (snapshot.registration.sourceBitDepth == 0) return;
-        if (callbacks_.tryAcquireProducer && !callbacks_.tryAcquireProducer(callbacks_.context)) return;
+        if (callbacks_.tryAcquireProducer) {
+            // Publish the retry intent before try_lock so an unlock racing this
+            // attempt cannot be missed. The P0 hook signals after releasing the
+            // mutex; normal Fill calls do not wake the worker when no retry waits.
+            producerLeaseRetryPending_.store(true, std::memory_order_release);
+            if (!callbacks_.tryAcquireProducer(callbacks_.context)) return;
+            producerLeaseRetryPending_.store(false, std::memory_order_release);
+        }
         struct Lease final {
             AudioCoreRuntime& runtime;
             ~Lease() {
