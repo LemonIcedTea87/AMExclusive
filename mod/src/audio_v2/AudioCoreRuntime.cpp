@@ -698,12 +698,15 @@ void AudioCoreRuntime::OnConverterSourcePrecision(void* converter,
     }
     ControlScope lock(*this);
     if (!graphConverter_ && graphUnit_ && graphRate_ == sampleRate &&
-        graphChannels_ == channels) {
-        void* candidate = matchedConverter;
-        if (!candidate && registry_.FindCandidate(sampleRate, channels, sourceBitDepth,
-                                                  graphObservationId_, candidate)) {
-            graphConverter_ = candidate;
-        } else if (candidate) {
+        graphChannels_ == channels && graphObservationId_ != 0) {
+        // A cookie can be applied to a decoder handle before the actual P0
+        // converter is registered. The rate/channel-only fallback may then
+        // return the previous queue item's ALAC/QLAC converter. Do not latch
+        // that ambiguous handle as this graph's converter: wait for the
+        // graph's exact observation and resolve against that identity.
+        void* candidate = nullptr;
+        if (registry_.FindCandidate(sampleRate, channels, sourceBitDepth,
+                                    graphObservationId_, candidate)) {
             graphConverter_ = candidate;
         }
     }
