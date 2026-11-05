@@ -1946,27 +1946,29 @@ void AudioCoreRuntime::TryBindGraphLocked() noexcept {
     // the first bind finishes. Stage that PCM just like an EOF successor so
     // the initial decoder output is not lost while the endpoint is prepared.
     // Local PCM already has its own source-side staging reservoir.
-    if (snapshot.registration.encodedFormat != kAppleLinearPcm) {
-        ArmPendingCaptureLocked(snapshot);
-        if (callbacks_.tryAcquireProducer) {
-            // Reuse the identity-checked worker bind path: it obtains the
-            // producer lease before the active queue/tap generation is changed.
-            pendingGraphBind_ = {graphUnit_, graphConverter_,
-                                 snapshot.registration.observationId,
-                                 snapshot.registrationId};
-        }
-    }
+    const bool needsPendingCapture =
+        snapshot.registration.encodedFormat != kAppleLinearPcm;
+    if (needsPendingCapture) ArmPendingCaptureLocked(snapshot);
 
+    AdvanceEventEpochLocked();
+    // Retire the previous generation without discarding the newly armed
+    // capture: a new-track P0 callback may already be staging into that queue.
+    if (graphBound_) RetireCaptureLocked(true, needsPendingCapture);
+    pendingGraphBind_ = {};
+
+    if (pendingCaptureOwner_ && callbacks_.tryAcquireProducer) {
+        // Reuse the identity-checked worker bind path: it obtains the producer
+        // lease before publishing the active queue and moving staged PCM.
+        pendingGraphBind_ = {graphUnit_, graphConverter_,
+                             snapshot.registration.observationId,
+                             snapshot.registrationId};
+    }
     if (pendingCaptureOwner_ && callbacks_.tryAcquireProducer && !pendingProducerLeaseHeld_) {
         // A native Fill/Dispose may already own the producer. The worker takes
         // a nonblocking lease before publishing the new queue and moving PCM.
         Wake();
         return;
     }
-
-    AdvanceEventEpochLocked();
-    if (graphBound_) RetireCaptureLocked(true);
-    pendingGraphBind_ = {};
 
     const bool localSignedInt32 = ammod::audio::IsUnsupportedLocalInt32(
         snapshot.registration.encodedFormat, snapshot.registration.appleFormatFlags,
