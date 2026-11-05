@@ -3083,7 +3083,13 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
         trace->lastReturnQpc = exit;
         trace->lastBuffers = InspectNativeTraceBuffers(data);
         trace->lastPackets = InspectNativeTraceInputPackets(descriptions, returned);
-        trace->lastPayload = InspectNativeTracePayload(data);
+        const bool traceP0InputPayload =
+            g_nativeTraceEnabled.load(std::memory_order_acquire) &&
+            trace->p0Candidate && result == 0 && returned != 0 &&
+            g_nativeTraceP0InputNonEmptyCalls.fetch_add(1, std::memory_order_relaxed) < 16;
+        if (traceP0InputPayload) {
+            trace->lastPayload = InspectNativeTracePayload(data);
+        }
         if (result == 0 && trace->localQueue && data) {
             const auto* list = static_cast<const AppleAudioBufferList*>(data);
             if (list->mNumberBuffers == 1 && list->mBuffers[0].mData &&
@@ -3100,9 +3106,7 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
                 }
             }
         }
-        if (g_nativeTraceEnabled.load(std::memory_order_acquire) &&
-            trace->p0Candidate && result == 0 && returned != 0 &&
-            g_nativeTraceP0InputNonEmptyCalls.fetch_add(1, std::memory_order_relaxed) < 16) {
+        if (traceP0InputPayload) {
             Log(L"native trace P0 input payload converter=" +
                 std::to_wstring(reinterpret_cast<std::uintptr_t>(trace->converter)) +
                 L" fillCall=" + std::to_wstring(trace->fillCall) +
