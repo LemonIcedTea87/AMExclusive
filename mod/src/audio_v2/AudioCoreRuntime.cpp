@@ -634,6 +634,18 @@ void AudioCoreRuntime::OnConverterCreated(void* converter,
             registry_.UpdateSourcePrecision(converter, pendingBits, pendingRate, pendingChannels);
         }
     }
+    // Only arm this early reservoir when the precision evidence belongs to
+    // this exact converter (or its source ASBD already carries valid depth).
+    const bool precisionEvidenceForConverter = sourceBits != 0 ||
+        pendingCompressedConverter_.load(std::memory_order_acquire) == converter;
+    if ((source.formatId == kAlac || source.formatId == kQlac) &&
+        precisionEvidenceForConverter) {
+        ConverterRegistrationSnapshot provisionalSnapshot{};
+        if (registry_.Snapshot(converter, provisionalSnapshot)) {
+            (void)ArmProvisionalPendingCaptureLocked(
+                provisionalSnapshot, precisionEvidenceForConverter);
+        }
+    }
     // The converter descriptor and the AudioUnit input-format property can
     // arrive in either order. If this registration completes the exact
     // observation already recorded for the current graph, retry its bind now.
@@ -674,6 +686,7 @@ void AudioCoreRuntime::OnConverterSourcePrecision(void* converter,
     pendingCompressedRate_.store(sampleRate, std::memory_order_release);
     pendingCompressedChannels_.store(channels, std::memory_order_release);
     pendingCompressedBits_.store(sourceBitDepth, std::memory_order_release);
+    pendingCompressedConverter_.store(converter, std::memory_order_release);
     void* matchedConverter = nullptr;
     const bool direct = registry_.UpdateSourcePrecision(
         converter, sourceBitDepth, sampleRate, channels);
@@ -708,6 +721,7 @@ void AudioCoreRuntime::OnConverterReset(void* converter, bool forceTimelineRetir
         // Unlike the streaming natural-repeat Reset, its eager-decoded staging
         // and already-captured ACv2 frames belong to the old media position and
         // must not survive into the new timeline.
+        if (provisionalCaptureConverter_ == converter) ClearPendingCaptureLocked();
         if (bound) RetireCaptureLocked(true);
         if (graphConverter_ == converter) TryBindGraphLocked();
         Wake();
@@ -822,6 +836,10 @@ void AudioCoreRuntime::OnConverterDisposed(void* converter) noexcept {
     if (!UiEnabled() || !converter) return;
     ControlScope lock(*this);
     registry_.Retire(converter);
+    void* pendingPrecisionConverter = converter;
+    (void)pendingCompressedConverter_.compare_exchange_strong(
+        pendingPrecisionConverter, nullptr, std::memory_order_acq_rel,
+        std::memory_order_acquire);
     if (boundConverter_.load(std::memory_order_acquire) == converter &&
         RetireDirectSelectionLocked()) {
         Wake();
@@ -871,6 +889,9 @@ void AudioCoreRuntime::ClearPendingCaptureLocked() noexcept {
     while (callbackDepth_.load(std::memory_order_acquire) != 0) SwitchToThread();
     pendingCaptureOwner_.reset();
     pendingCaptureAllocationFailed_ = false;
+    provisionalCaptureUnit_ = nullptr;
+    provisionalCaptureConverter_ = nullptr;
+    provisionalCaptureRegistrationId_ = 0;
 }
 
 void AudioCoreRuntime::ArmPendingCaptureLocked(const ConverterRegistrationSnapshot& snapshot) noexcept {
@@ -891,6 +912,60 @@ void AudioCoreRuntime::ArmPendingCaptureLocked(const ConverterRegistrationSnapsh
     } catch (...) {
         pendingCaptureAllocationFailed_ = true;
     }
+}
+
+bool AudioCoreRuntime::ArmProvisionalPendingCaptureLocked(
+    const ConverterRegistrationSnapshot& snapshot,
+    bool precisionEvidenceForConverter) noexcept {
+    const auto& registration = snapshot.registration;
+    const auto now = GetTickCount64();
+    if (!UiEnabled() || !precisionEvidenceForConverter || !graphUnit_ || graphBound_ ||
+        coordinator_.Phase() != AudioCoreGatePhase::Off ||
+        endOfStreamDrainPending_ || streamingProducerDrainPending_ ||
+        seekFence_ || graphConverter_ || graphSourceBits_ != 0 ||
+        graphObservationId_ != 0 || graphRate_ < 8000 || graphRate_ > 768000 ||
+        graphChannels_ != 2 || registration.outputFormat.sampleRate != graphRate_ ||
+        registration.outputFormat.channels != graphChannels_ ||
+        registration.observationId == 0 ||
+        (registration.encodedFormat != kAlac && registration.encodedFormat != kQlac) ||
+        registration.sourceBitDepth > UINT16_MAX ||
+        !IsSupportedSourceDepth(static_cast<std::uint16_t>(registration.sourceBitDepth)) ||
+        !callbacks_.tryAcquireProducer || pendingGraphBind_.converter ||
+        graphInitializedTick_ == 0 || now < graphInitializedTick_ ||
+        now - graphInitializedTick_ > 2000) {
+        return false;
+    }
+
+    if (pendingCaptureOwner_) {
+        if (pendingCaptureOwner_->converter != registration.converter ||
+            pendingCaptureOwner_->registrationId != snapshot.registrationId) {
+            return false;
+        }
+    } else {
+        const auto pendingConverter =
+            pendingDeferredConverter_.load(std::memory_order_acquire);
+        if (pendingConverter && pendingConverter != registration.converter) return false;
+        if (pendingCaptureAllocationFailed_) {
+            ClearPendingCaptureLocked();
+            return false;
+        }
+        ArmPendingCaptureLocked(snapshot);
+    }
+
+    if (!pendingCaptureOwner_ || pendingCaptureAllocationFailed_ ||
+        pendingCaptureOwner_->converter != registration.converter ||
+        pendingCaptureOwner_->registrationId != snapshot.registrationId) {
+        if (pendingDeferredConverter_.load(std::memory_order_acquire) ==
+            registration.converter) {
+            ClearPendingCaptureLocked();
+        }
+        return false;
+    }
+
+    provisionalCaptureUnit_ = graphUnit_;
+    provisionalCaptureConverter_ = registration.converter;
+    provisionalCaptureRegistrationId_ = snapshot.registrationId;
+    return true;
 }
 
 bool AudioCoreRuntime::ShouldDeferPcmPull(void* converter, std::uint32_t requestedFrames) noexcept {
@@ -1024,18 +1099,28 @@ void AudioCoreRuntime::OnAudioUnitInitialized(void* unit, void* candidateConvert
     // no LPCM input format and resolves no candidate; treating it as a graph
     // identity change retired the bind created milliseconds earlier, so capture
     // died below the prebuffer threshold and no attempt ever activated (ENG-1).
-    // A formatless, candidate-less init while a bind is live or pending belongs
-    // to the current graph: leave the graph identity alone.
+    // A formatless, candidate-less init while a bind is live, pending, or
+    // provisionally capturing belongs to the current graph: leave its identity
+    // and early PCM reservoir alone.
+    const auto pendingDeferred = pendingDeferredConverter_.load(std::memory_order_acquire);
+    const bool provisionalCapturePending = provisionalCaptureConverter_ &&
+        provisionalCaptureUnit_ && pendingCaptureOwner_ &&
+        pendingCaptureOwner_->converter == provisionalCaptureConverter_ &&
+        pendingCaptureOwner_->registrationId == provisionalCaptureRegistrationId_ &&
+        pendingDeferred == provisionalCaptureConverter_;
+    const bool unresolvedProvisionalForUnit = provisionalCapturePending &&
+        provisionalCaptureUnit_ == unit && sampleRate == graphRate_ &&
+        channels == graphChannels_ && !candidateConverter;
     if (!candidateConverter && sampleRate == 0 && channels == 0 &&
-        (graphBound_ || pendingGraphBind_.converter)) {
+        (graphBound_ || pendingGraphBind_.converter || provisionalCapturePending)) {
         return;
     }
     const bool graphIdentityChanged =
         graphUnit_ != unit || graphConverter_ != candidateConverter;
     if (graphIdentityChanged) (void)RetireDirectSelectionLocked();
     pendingGraphBind_ = {};
-    if (pendingDeferredConverter_.load(std::memory_order_acquire) &&
-        pendingDeferredConverter_.load(std::memory_order_acquire) != candidateConverter) {
+    if (pendingDeferred && pendingDeferred != candidateConverter &&
+        !unresolvedProvisionalForUnit) {
         // An unknown or different selected graph cancels the previous
         // successor's reservoir, even while the old endpoint still drains.
         ClearPendingCaptureLocked();
@@ -1055,6 +1140,19 @@ void AudioCoreRuntime::OnAudioUnitInitialized(void* unit, void* candidateConvert
     graphChannels_ = channels;
     graphSourceBits_ = sourceBitDepth;
     graphObservationId_ = observationId;
+    if (candidateConverter && observationId != 0 &&
+        candidateConverter == provisionalCaptureConverter_) {
+        ConverterRegistrationSnapshot confirmed{};
+        if (registry_.Snapshot(candidateConverter, confirmed) &&
+            confirmed.registrationId == provisionalCaptureRegistrationId_ &&
+            confirmed.registration.observationId == observationId &&
+            confirmed.registration.outputFormat.sampleRate == sampleRate &&
+            confirmed.registration.outputFormat.channels == channels) {
+            provisionalCaptureUnit_ = nullptr;
+            provisionalCaptureConverter_ = nullptr;
+            provisionalCaptureRegistrationId_ = 0;
+        }
+    }
     graphStarted_ = false;
     graphInitializedTick_ = sampleRate >= 8000 && sampleRate <= 768000 &&
         channels == 2 ? GetTickCount64() : 0;
@@ -1082,11 +1180,21 @@ void AudioCoreRuntime::OnAudioUnitInputFormatUpdated(
     void* candidateConverter = nullptr;
     (void)registry_.FindCandidate(sampleRate, channels, sourceBitDepth,
                                   observationId, candidateConverter);
+    const auto pendingDeferred =
+        pendingDeferredConverter_.load(std::memory_order_acquire);
+    const bool provisionalCapturePendingForUnit = provisionalCaptureConverter_ &&
+        provisionalCaptureUnit_ == unit && pendingCaptureOwner_ &&
+        pendingCaptureOwner_->converter == provisionalCaptureConverter_ &&
+        pendingCaptureOwner_->registrationId == provisionalCaptureRegistrationId_ &&
+        pendingDeferred == provisionalCaptureConverter_ &&
+        sampleRate == graphRate_ && channels == graphChannels_;
+    const bool unresolvedProvisionalForUnit =
+        provisionalCapturePendingForUnit && candidateConverter == nullptr;
     const bool graphIdentityChanged = graphConverter_ != candidateConverter;
     if (graphIdentityChanged) {
         (void)RetireDirectSelectionLocked();
-        if (pendingDeferredConverter_.load(std::memory_order_acquire) &&
-            pendingDeferredConverter_.load(std::memory_order_acquire) != candidateConverter) {
+        if (pendingDeferred && pendingDeferred != candidateConverter &&
+            !unresolvedProvisionalForUnit) {
             ClearPendingCaptureLocked();
         }
         if (pendingGraphBind_.converter != candidateConverter) pendingGraphBind_ = {};
@@ -1100,6 +1208,19 @@ void AudioCoreRuntime::OnAudioUnitInputFormatUpdated(
     graphConverter_ = candidateConverter;
     graphSourceBits_ = sourceBitDepth;
     graphObservationId_ = observationId;
+    if (candidateConverter && observationId != 0 &&
+        candidateConverter == provisionalCaptureConverter_) {
+        ConverterRegistrationSnapshot confirmed{};
+        if (registry_.Snapshot(candidateConverter, confirmed) &&
+            confirmed.registrationId == provisionalCaptureRegistrationId_ &&
+            confirmed.registration.observationId == observationId &&
+            confirmed.registration.outputFormat.sampleRate == sampleRate &&
+            confirmed.registration.outputFormat.channels == channels) {
+            provisionalCaptureUnit_ = nullptr;
+            provisionalCaptureConverter_ = nullptr;
+            provisionalCaptureRegistrationId_ = 0;
+        }
+    }
     TryBindGraphLocked();
     Wake();
 }

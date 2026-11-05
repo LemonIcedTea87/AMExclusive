@@ -295,6 +295,8 @@ private:
     void AdvanceEventEpochLocked() noexcept;
     bool EventCurrentLocked(const AudioCoreRuntimeEventSnapshot&) const noexcept;
     void ArmPendingCaptureLocked(const ConverterRegistrationSnapshot&) noexcept;
+    bool ArmProvisionalPendingCaptureLocked(
+        const ConverterRegistrationSnapshot&, bool precisionEvidenceForConverter) noexcept;
     void ClearPendingCaptureLocked() noexcept;
     bool StagePendingPcm(const ConverterRegistrationSnapshot&, const ApplePcmFormatView&,
                          const ApplePcmBufferListView&, std::uint32_t,
@@ -371,6 +373,11 @@ private:
     std::atomic<void*> pendingDeferredConverter_{};
     bool pendingCaptureAllocationFailed_{};
     bool pendingProducerLeaseHeld_{};
+    // Metadata-only startup capture, retained until an exact AudioUnit
+    // observation confirms this converter or a graph/decoder lifecycle cancels it.
+    void* provisionalCaptureUnit_{};
+    void* provisionalCaptureConverter_{};
+    std::uint64_t provisionalCaptureRegistrationId_{};
 
     std::atomic<std::uint32_t> callbackDepth_{};
     // QPC of the latest accepted frame block from the bound compressed P0
@@ -490,6 +497,7 @@ private:
     std::atomic<std::uint32_t> pendingCompressedRate_{};
     std::atomic<std::uint32_t> pendingCompressedChannels_{};
     std::atomic<std::uint32_t> pendingCompressedBits_{};
+    std::atomic<void*> pendingCompressedConverter_{};
 
     std::atomic<std::uint64_t> rawFillCalls_{};
     std::atomic<std::uint64_t> fillSuccessWithData_{};
