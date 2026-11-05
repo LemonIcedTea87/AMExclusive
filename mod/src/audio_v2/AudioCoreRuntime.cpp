@@ -2358,13 +2358,15 @@ void AudioCoreRuntime::RetireCompletedCaptureLocked(void* converter) noexcept {
 
 void AudioCoreRuntime::TryBindPendingGraphLocked() noexcept {
     if (graphBound_ || !pendingGraphBind_.converter) return;
-    const auto successor = pendingGraphBind_;
+    // This covers both a drain-blocked successor and a direct initial bind.
+    // Validate the exact graph/converter identity before acquiring the producer.
+    const auto pending = pendingGraphBind_;
     ConverterRegistrationSnapshot snapshot{};
-    if (UiEnabled() && successor.unit == graphUnit_ &&
-        successor.converter == graphConverter_ &&
-        registry_.Snapshot(successor.converter, snapshot) &&
-        snapshot.registration.observationId == successor.observationId &&
-        snapshot.registrationId == successor.registrationId) {
+    if (UiEnabled() && pending.unit == graphUnit_ &&
+        pending.converter == graphConverter_ &&
+        registry_.Snapshot(pending.converter, snapshot) &&
+        snapshot.registration.observationId == pending.observationId &&
+        snapshot.registrationId == pending.registrationId) {
         if (snapshot.registration.sourceBitDepth == 0) return;
         if (callbacks_.tryAcquireProducer && !callbacks_.tryAcquireProducer(callbacks_.context)) return;
         struct Lease final {
