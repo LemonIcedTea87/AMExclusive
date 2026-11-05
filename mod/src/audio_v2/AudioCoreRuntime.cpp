@@ -1217,7 +1217,10 @@ void AudioCoreRuntime::OnAudioUnitInputFormatUpdated(
         sampleRate == graphRate_ && channels == graphChannels_;
     const bool unresolvedProvisionalForUnit =
         provisionalCapturePendingForUnit && candidateConverter == nullptr;
-    const bool graphIdentityChanged = graphConverter_ != candidateConverter;
+    const bool graphFormatChanged =
+        graphRateChanged || graphSourceBits_ != sourceBitDepth;
+    const bool graphIdentityChanged =
+        graphConverter_ != candidateConverter || graphFormatChanged;
     if (graphIdentityChanged) {
         (void)RetireDirectSelectionLocked();
         if (pendingDeferred && pendingDeferred != candidateConverter &&
