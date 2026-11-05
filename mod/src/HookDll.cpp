@@ -893,6 +893,12 @@ struct V2P1SignatureSlot {
     std::atomic<std::uint64_t> timestampDiscontinuityCalls{};
 };
 std::array<V2P1SignatureSlot, 32> g_v2P1SignatureSlots{};
+struct V2P0PcmTraceSlot final {
+    std::atomic<std::uintptr_t> converter{};
+    std::atomic<std::uint64_t> nonEmptyCalls{};
+};
+std::array<V2P0PcmTraceSlot, 32> g_v2P0PcmTraceSlots{};
+
 std::atomic<std::uint64_t> g_v2NativeGetBufferCalls{};
 std::atomic<std::uint64_t> g_v2NativeReleaseBufferCalls{};
 
@@ -1161,6 +1167,129 @@ double BitsDouble(std::uint64_t bits) noexcept {
     static_assert(sizeof(bits) == sizeof(value));
     std::memcpy(&value, &bits, sizeof(value));
     return value;
+}
+
+struct V2P0PcmSampleStats final {
+    std::uint64_t samplesScanned{};
+    std::uint64_t zeroSamples{};
+    std::uint64_t nonZeroSamples{};
+    std::uint64_t nonFiniteSamples{};
+    std::uint64_t firstNonZeroFrame{};
+    std::uint64_t inspectedFrames{};
+    std::uint64_t signature{};
+    double peakAbs{};
+    bool valid{};
+    bool complete{};
+    bool hasNonZero{};
+};
+
+V2P0PcmTraceSlot* FindV2P0PcmTraceSlot(void* converter) noexcept {
+    if (!converter) return nullptr;
+    const auto key = reinterpret_cast<std::uintptr_t>(converter);
+    const auto start = static_cast<std::size_t>((key >> 4) % g_v2P0PcmTraceSlots.size());
+    for (std::size_t probe = 0; probe < g_v2P0PcmTraceSlots.size(); ++probe) {
+        auto& slot = g_v2P0PcmTraceSlots[(start + probe) % g_v2P0PcmTraceSlots.size()];
+        auto observed = slot.converter.load(std::memory_order_acquire);
+        if (observed == key) return &slot;
+        if (observed == 0 &&
+            slot.converter.compare_exchange_strong(observed, key,
+                std::memory_order_acq_rel, std::memory_order_acquire)) {
+            slot.nonEmptyCalls.store(0, std::memory_order_release);
+            return &slot;
+        }
+    }
+    return nullptr;
+}
+
+V2P0PcmSampleStats InspectV2P0PcmSamples(
+    const AppleAudioBufferList* list,
+    const ammod::audio_v2::ApplePcmFormatView& format,
+    std::uint32_t producedPackets) noexcept {
+    V2P0PcmSampleStats stats{};
+    constexpr std::uint32_t kFloatBytes = sizeof(float);
+    constexpr std::uint64_t kMaximumSamplesPerFill = 65536;
+    constexpr std::uint32_t kAppleIsBigEndian = 1u << 1;
+    if (!list || list->mNumberBuffers == 0 || list->mNumberBuffers > 8 ||
+        producedPackets == 0 || format.formatId != 0x6C70636Du ||
+        (format.formatFlags & ammod::audio_v2::kAppleFormatFlagIsFloat) == 0 ||
+        (format.formatFlags & kAppleIsBigEndian) != 0 ||
+        format.bitsPerChannel != 32 || format.channelsPerFrame != 2 ||
+        format.framesPerPacket != 1) {
+        return stats;
+    }
+
+    std::uint32_t totalChannels{};
+    std::uint64_t minimumInspectedFrames = UINT64_MAX;
+    std::uint64_t remainingBudget = kMaximumSamplesPerFill;
+    stats.signature = kFnv1aOffset;
+    stats.valid = true;
+    stats.complete = true;
+
+    for (std::uint32_t bufferIndex = 0; bufferIndex < list->mNumberBuffers; ++bufferIndex) {
+        const auto& buffer = list->mBuffers[bufferIndex];
+        if (!buffer.mData || buffer.mNumberChannels == 0 ||
+            buffer.mDataByteSize % kFloatBytes != 0) {
+            stats.valid = false;
+            stats.complete = false;
+            break;
+        }
+        totalChannels += buffer.mNumberChannels;
+        const auto expectedSamples =
+            static_cast<std::uint64_t>(producedPackets) * buffer.mNumberChannels;
+        const auto availableSamples = buffer.mDataByteSize / kFloatBytes;
+        const auto toScan = std::min<std::uint64_t>(
+            std::min<std::uint64_t>(expectedSamples, availableSamples), remainingBudget);
+        const auto* bytes = static_cast<const unsigned char*>(buffer.mData);
+        std::uint64_t firstNonZeroInBuffer = UINT64_MAX;
+
+        if (availableSamples < expectedSamples || toScan < expectedSamples) {
+            stats.complete = false;
+        }
+        for (std::uint64_t sampleIndex = 0; sampleIndex < toScan; ++sampleIndex) {
+            float sample{};
+            const auto byteOffset = static_cast<std::size_t>(sampleIndex * kFloatBytes);
+            std::memcpy(&sample, bytes + byteOffset, sizeof(sample));
+            AppendP1Hash(stats.signature, bytes + byteOffset, sizeof(sample));
+            ++stats.samplesScanned;
+
+            if (!std::isfinite(sample)) {
+                ++stats.nonFiniteSamples;
+                continue;
+            }
+            if (sample == 0.0f) {
+                ++stats.zeroSamples;
+                continue;
+            }
+
+            ++stats.nonZeroSamples;
+            if (firstNonZeroInBuffer == UINT64_MAX) {
+                firstNonZeroInBuffer = sampleIndex / buffer.mNumberChannels;
+            }
+            if (!stats.hasNonZero || std::fabs(static_cast<double>(sample)) > stats.peakAbs) {
+                stats.peakAbs = std::fabs(static_cast<double>(sample));
+            }
+            stats.hasNonZero = true;
+        }
+        const auto inspectedFrames = toScan / buffer.mNumberChannels;
+        minimumInspectedFrames = std::min(minimumInspectedFrames, inspectedFrames);
+        if (firstNonZeroInBuffer != UINT64_MAX &&
+            (!stats.hasNonZero || firstNonZeroInBuffer < stats.firstNonZeroFrame ||
+             stats.samplesScanned == toScan)) {
+            // The frame offset is per buffer; the earliest channel/frame wins.
+            stats.firstNonZeroFrame = stats.hasNonZero && stats.firstNonZeroFrame != 0
+                ? std::min(stats.firstNonZeroFrame, firstNonZeroInBuffer)
+                : firstNonZeroInBuffer;
+        }
+        remainingBudget -= toScan;
+    }
+
+    if (totalChannels != format.channelsPerFrame) {
+        stats.valid = false;
+    }
+    stats.inspectedFrames = minimumInspectedFrames == UINT64_MAX
+        ? 0 : minimumInspectedFrames;
+    if (stats.samplesScanned == 0) stats.valid = false;
+    return stats;
 }
 
 V2P1SignatureResult ComputeV2P1Signature(const AppleAudioBufferList* list) noexcept {
@@ -2941,6 +3070,59 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
         // Fill has no decoded frames.  Binding can complete on a later graph
         // event, while the pair remains valid for the same converter.
         g_nativeP0Puller.ObserveNativeFill(converter, inputProc, inputUserData, requestedPackets);
+    }
+    if (nativeTrace && p0Candidate && producedPackets != 0 && outputData) {
+        if (auto* sampleSlot = FindV2P0PcmTraceSlot(converter)) {
+            const auto sampleCall =
+                sampleSlot->nonEmptyCalls.fetch_add(1, std::memory_order_relaxed) + 1;
+            if (sampleCall <= 8) {
+                ammod::audio_v2::ApplePcmFormatView sampleFormat{};
+                const bool formatKnown =
+                    g_audioCoreRuntime.DestinationFormat(converter, sampleFormat);
+                const auto sampleStats = formatKnown
+                    ? InspectV2P0PcmSamples(
+                        static_cast<const AppleAudioBufferList*>(outputData),
+                        sampleFormat, producedPackets)
+                    : V2P0PcmSampleStats{};
+                const auto sampleRatio = sampleStats.samplesScanned != 0
+                    ? static_cast<double>(sampleStats.zeroSamples) /
+                        static_cast<double>(sampleStats.samplesScanned)
+                    : 0.0;
+                Log(L"audio core v2 P0 PCM sample trace converter=" +
+                    std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
+                    L" sampleCall=" + std::to_wstring(sampleCall) +
+                    L" producedPackets=" + std::to_wstring(producedPackets) +
+                    L" result=" + std::to_wstring(result) +
+                    L" formatKnown=" + std::to_wstring(formatKnown) +
+                    L" formatId=0x" +
+                        HResultText(static_cast<HRESULT>(sampleFormat.formatId)).substr(2) +
+                    L" formatFlags=0x" +
+                        HResultText(static_cast<HRESULT>(sampleFormat.formatFlags)).substr(2) +
+                    L" rate=" + std::to_wstring(sampleFormat.sampleRate) +
+                    L" channels=" + std::to_wstring(sampleFormat.channelsPerFrame) +
+                    L" bits=" + std::to_wstring(sampleFormat.bitsPerChannel) +
+                    L" bytesPerFrame=" + std::to_wstring(sampleFormat.bytesPerFrame) +
+                    L" buffers=" +
+                        std::to_wstring(static_cast<const AppleAudioBufferList*>(
+                            outputData)->mNumberBuffers) +
+                    L" inspectionValid=" + std::to_wstring(sampleStats.valid) +
+                    L" inspectionComplete=" + std::to_wstring(sampleStats.complete) +
+                    L" sampledFloats=" + std::to_wstring(sampleStats.samplesScanned) +
+                    L" zeroFloats=" + std::to_wstring(sampleStats.zeroSamples) +
+                    L" nonZeroFloats=" + std::to_wstring(sampleStats.nonZeroSamples) +
+                    L" nonFiniteFloats=" + std::to_wstring(sampleStats.nonFiniteSamples) +
+                    L" zeroRatio=" + std::to_wstring(sampleRatio) +
+                    L" hasNonZero=" + std::to_wstring(sampleStats.hasNonZero) +
+                    L" firstNonZeroFrame=" +
+                        std::to_wstring(sampleStats.firstNonZeroFrame) +
+                    L" inspectedFramesPerChannel=" +
+                        std::to_wstring(sampleStats.inspectedFrames) +
+                    L" peakAbs=" + std::to_wstring(sampleStats.peakAbs) +
+                    L" sampleHash=" + std::to_wstring(sampleStats.signature) +
+                    L" enterQpc=" + std::to_wstring(enterQpc) +
+                    L" returnQpc=" + std::to_wstring(fillReturnQpc));
+            }
+        }
     }
     if (p0TraceCall != 0 &&
         (p0TraceCall <= 16 || (p0NonEmptyCall != 0 && p0NonEmptyCall <= 32))) {
