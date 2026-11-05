@@ -941,7 +941,13 @@ bool AudioCoreRuntime::ArmProvisionalPendingCaptureLocked(
         (!exactGraphObservation && !graphObservationPending) ||
         registration.observationId == 0 ||
         graphRate_ < 8000 || graphRate_ > 768000 ||
-        graphChannels_ != 2 || registration.outputFormat.sampleRate != graphRate_ ||
+        graphChannels_ != 2 ||
+        // Before the exact child-graph observation arrives, graphRate_ can
+        // still describe Apple's previous/default format. The cookie-pinned
+        // converter is the only allowed provisional exception; the exact
+        // observation must later confirm its rate before promotion/binding.
+        (!graphObservationPending &&
+         registration.outputFormat.sampleRate != graphRate_) ||
         registration.outputFormat.channels != graphChannels_ ||
         (registration.encodedFormat != kAlac && registration.encodedFormat != kQlac) ||
         registration.sourceBitDepth > UINT16_MAX ||
