@@ -86,6 +86,25 @@ bool AudioCoreRuntime::Start(const AudioCoreRuntimeCallbacks& callbacks) noexcep
     acceptedCalls_.store(0, std::memory_order_release);
     acceptedFrames_.store(0, std::memory_order_release);
     lastAcceptedP0Qpc_.store(0, std::memory_order_release);
+    startupP0Ready_.store(false, std::memory_order_release);
+    startupP0Converter_.store(nullptr, std::memory_order_release);
+    startupP0RegistrationId_.store(0, std::memory_order_relaxed);
+    startupP0ObservationId_.store(0, std::memory_order_relaxed);
+    startupP0FirstOutputQpc_.store(0, std::memory_order_relaxed);
+    startupP0FirstOutputPackets_.store(0, std::memory_order_relaxed);
+    startupP0FirstOutputFrames_.store(0, std::memory_order_relaxed);
+    startupP0FirstOutputWasBound_.store(false, std::memory_order_relaxed);
+    startupP0FirstStageQpc_.store(0, std::memory_order_relaxed);
+    startupP0FirstStageFrame_.store(0, std::memory_order_relaxed);
+    startupP0StagedCalls_.store(0, std::memory_order_relaxed);
+    startupP0StagedFrames_.store(0, std::memory_order_relaxed);
+    startupP0FirstPromoteQpc_.store(0, std::memory_order_relaxed);
+    startupP0FirstPromotedFrameSeen_.store(false, std::memory_order_relaxed);
+    startupP0FirstPromotedRelativeFrame_.store(0, std::memory_order_relaxed);
+    startupP0PromotedBlocks_.store(0, std::memory_order_relaxed);
+    startupP0PromotedFrames_.store(0, std::memory_order_relaxed);
+    startupP0FirstBoundQpc_.store(0, std::memory_order_relaxed);
+    startupP0FirstBoundFrames_.store(0, std::memory_order_relaxed);
     lastFillResult_.store(0, std::memory_order_release);
     lastProducedPackets_.store(0, std::memory_order_release);
     nativePumpSampleRate_.store(0, std::memory_order_release);
@@ -889,7 +908,8 @@ bool AudioCoreRuntime::ShouldDeferPcmPull(void* converter, std::uint32_t request
 bool AudioCoreRuntime::StagePendingPcm(const ConverterRegistrationSnapshot& snapshot,
                                       const ApplePcmFormatView& format,
                                       const ApplePcmBufferListView& list,
-                                      std::uint32_t packets) noexcept {
+                                      std::uint32_t packets,
+                                      std::uint64_t producerCallbackQpc) noexcept {
     auto* capture = pendingCapture_.load(std::memory_order_acquire);
     if (!capture || capture->converter != snapshot.registration.converter ||
         capture->registrationId != snapshot.registrationId ||
@@ -909,6 +929,21 @@ bool AudioCoreRuntime::StagePendingPcm(const ConverterRegistrationSnapshot& snap
         return false;
     }
     capture->nextFrame += output.frames;
+    if (startupP0Ready_.load(std::memory_order_acquire) &&
+        startupP0Converter_.load(std::memory_order_acquire) ==
+            snapshot.registration.converter) {
+        const auto stagedCalls =
+            startupP0StagedCalls_.fetch_add(1, std::memory_order_relaxed);
+        startupP0StagedFrames_.fetch_add(output.frames, std::memory_order_relaxed);
+        if (stagedCalls == 0) {
+            startupP0FirstStageQpc_.store(producerCallbackQpc, std::memory_order_release);
+            startupP0FirstStageFrame_.store(firstFrame, std::memory_order_release);
+            std::uint64_t noFrames = 0;
+            startupP0FirstOutputFrames_.compare_exchange_strong(
+                noFrames, output.frames, std::memory_order_release,
+                std::memory_order_relaxed);
+        }
+    }
     if (callbacks_.deepDiagnostics) {
         acceptedCalls_.fetch_add(1, std::memory_order_relaxed);
         acceptedFrames_.fetch_add(output.frames, std::memory_order_relaxed);
@@ -937,7 +972,25 @@ bool AudioCoreRuntime::PromotePendingPcmLocked(void* converter) noexcept {
             firstFrame == block->firstFrame &&
             tap_.OnInterleaved(converter, firstFrame, block->samples.data(), block->frames,
                                discontinuity, false);
-        if (good) capture->queue.Pop();
+        if (good) {
+            if (startupP0Ready_.load(std::memory_order_acquire) &&
+                startupP0Converter_.load(std::memory_order_acquire) == converter) {
+                const auto promotedBlocks =
+                    startupP0PromotedBlocks_.fetch_add(1, std::memory_order_relaxed);
+                startupP0PromotedFrames_.fetch_add(block->frames, std::memory_order_relaxed);
+                if (promotedBlocks == 0) {
+                    LARGE_INTEGER promotionQpc{};
+                    const auto qpc = QueryPerformanceCounter(&promotionQpc)
+                        ? static_cast<std::uint64_t>(promotionQpc.QuadPart) : 0;
+                    startupP0FirstPromoteQpc_.store(qpc, std::memory_order_release);
+                    startupP0FirstPromotedRelativeFrame_.store(
+                        block->firstFrame, std::memory_order_release);
+                    startupP0FirstPromotedFrameSeen_.store(
+                        true, std::memory_order_release);
+                }
+            }
+            capture->queue.Pop();
+        }
     }
     ClearPendingCaptureLocked();
     return good;
@@ -1502,13 +1555,34 @@ bool AudioCoreRuntime::OnPcmOutput(void* converter, const ApplePcmFormatView& fo
         ConverterRegistrationSnapshot snapshot{};
         if (!registry_.Snapshot(converter, snapshot)) {
             RecordPcmReject(AudioCorePcmRejectReason::RegistryMissing);
-        } else if (!snapshot.bound ||
-                   boundConverter_.load(std::memory_order_acquire) != converter ||
-                   snapshot.registration.mediaGeneration !=
-                       boundMediaGeneration_.load(std::memory_order_acquire)) {
-            accepted = StagePendingPcm(snapshot, format, list, producedPackets);
-            if (!accepted) RecordPcmReject(AudioCorePcmRejectReason::RegistryUnbound);
         } else {
+            const bool currentBoundGeneration = snapshot.bound &&
+                boundConverter_.load(std::memory_order_acquire) == converter &&
+                snapshot.registration.mediaGeneration ==
+                    boundMediaGeneration_.load(std::memory_order_acquire);
+            if (snapshot.registration.encodedFormat != kAppleLinearPcm) {
+                void* noStartupConverter = nullptr;
+                if (startupP0Converter_.compare_exchange_strong(
+                        noStartupConverter, converter, std::memory_order_acq_rel,
+                        std::memory_order_acquire)) {
+                    startupP0RegistrationId_.store(
+                        snapshot.registrationId, std::memory_order_relaxed);
+                    startupP0ObservationId_.store(
+                        snapshot.registration.observationId, std::memory_order_relaxed);
+                    startupP0FirstOutputQpc_.store(
+                        producerCallbackQpc, std::memory_order_relaxed);
+                    startupP0FirstOutputPackets_.store(
+                        producedPackets, std::memory_order_relaxed);
+                    startupP0FirstOutputWasBound_.store(
+                        currentBoundGeneration, std::memory_order_relaxed);
+                    startupP0Ready_.store(true, std::memory_order_release);
+                }
+            }
+            if (!currentBoundGeneration) {
+                accepted = StagePendingPcm(
+                    snapshot, format, list, producedPackets, producerCallbackQpc);
+                if (!accepted) RecordPcmReject(AudioCorePcmRejectReason::RegistryUnbound);
+            } else {
             const bool rateMatches =
                 snapshot.registration.outputFormat.sampleRate == format.sampleRate;
             const bool channelMatches =
@@ -1522,6 +1596,13 @@ bool AudioCoreRuntime::OnPcmOutput(void* converter, const ApplePcmFormatView& fo
             }
             ApplePcmOutputView output{};
             if (ParseApplePcmOutput(format, list, producedPackets, output)) {
+                if (startupP0Ready_.load(std::memory_order_acquire) &&
+                    startupP0Converter_.load(std::memory_order_acquire) == converter) {
+                    std::uint64_t noFrames = 0;
+                    startupP0FirstOutputFrames_.compare_exchange_strong(
+                        noFrames, output.frames, std::memory_order_release,
+                        std::memory_order_relaxed);
+                }
                 std::uint64_t firstFrame{};
                 bool discontinuity{};
                 if (registry_.ClaimFrames(converter, output.frames, firstFrame, discontinuity)) {
@@ -1538,6 +1619,18 @@ bool AudioCoreRuntime::OnPcmOutput(void* converter, const ApplePcmFormatView& fo
                         if (boundP0Output && producerCallbackQpc != 0)
                             lastAcceptedP0Qpc_.store(
                                 producerCallbackQpc, std::memory_order_release);
+                        if (boundP0Output &&
+                            startupP0Ready_.load(std::memory_order_acquire) &&
+                            startupP0Converter_.load(std::memory_order_acquire) == converter) {
+                            std::uint64_t noQpc = 0;
+                            startupP0FirstBoundQpc_.compare_exchange_strong(
+                                noQpc, producerCallbackQpc, std::memory_order_release,
+                                std::memory_order_relaxed);
+                            std::uint64_t noFrames = 0;
+                            startupP0FirstBoundFrames_.compare_exchange_strong(
+                                noFrames, output.frames, std::memory_order_release,
+                                std::memory_order_relaxed);
+                        }
                         if (callbacks_.deepDiagnostics) {
                             acceptedCalls_.fetch_add(1, std::memory_order_relaxed);
                             acceptedFrames_.fetch_add(output.frames, std::memory_order_relaxed);
@@ -1551,6 +1644,7 @@ bool AudioCoreRuntime::OnPcmOutput(void* converter, const ApplePcmFormatView& fo
                 }
             } else {
                 RecordPcmReject(AudioCorePcmRejectReason::Parse);
+            }
             }
         }
     }
@@ -1825,10 +1919,48 @@ AudioCoreRuntimeStats AudioCoreRuntime::Stats() const noexcept {
     pcmFill.acceptedFrames = acceptedFrames_.load(std::memory_order_acquire);
     pcmFill.lastResult = lastFillResult_.load(std::memory_order_acquire);
     pcmFill.lastProducedPackets = lastProducedPackets_.load(std::memory_order_acquire);
-    return AudioCoreRuntimeStats{
+    AudioCoreRuntimeStats stats{
         coordinator.BufferedFrames(), coordinator.Stats(), tap_.Stats(), coordinator.Sink().Stats(),
         pcmFill,
     };
+    if (startupP0Ready_.load(std::memory_order_acquire)) {
+        stats.startupP0Converter = startupP0Converter_.load(std::memory_order_acquire);
+        stats.startupP0RegistrationId =
+            startupP0RegistrationId_.load(std::memory_order_acquire);
+        stats.startupP0ObservationId =
+            startupP0ObservationId_.load(std::memory_order_acquire);
+        stats.startupP0FirstOutputQpc =
+            startupP0FirstOutputQpc_.load(std::memory_order_acquire);
+        stats.startupP0FirstOutputPackets =
+            startupP0FirstOutputPackets_.load(std::memory_order_acquire);
+        stats.startupP0FirstOutputFrames =
+            startupP0FirstOutputFrames_.load(std::memory_order_acquire);
+        stats.startupP0FirstOutputWasBound =
+            startupP0FirstOutputWasBound_.load(std::memory_order_acquire);
+        stats.startupP0FirstStageQpc =
+            startupP0FirstStageQpc_.load(std::memory_order_acquire);
+        stats.startupP0FirstStageFrame =
+            startupP0FirstStageFrame_.load(std::memory_order_acquire);
+        stats.startupP0StagedCalls =
+            startupP0StagedCalls_.load(std::memory_order_acquire);
+        stats.startupP0StagedFrames =
+            startupP0StagedFrames_.load(std::memory_order_acquire);
+        stats.startupP0FirstPromoteQpc =
+            startupP0FirstPromoteQpc_.load(std::memory_order_acquire);
+        stats.startupP0PromotedBlocks =
+            startupP0PromotedBlocks_.load(std::memory_order_acquire);
+        stats.startupP0PromotedFrames =
+            startupP0PromotedFrames_.load(std::memory_order_acquire);
+        stats.startupP0FirstPromotedRelativeFrame =
+            startupP0FirstPromotedRelativeFrame_.load(std::memory_order_acquire);
+        stats.startupP0HasPromotion =
+            startupP0FirstPromotedFrameSeen_.load(std::memory_order_acquire);
+        stats.startupP0FirstBoundQpc =
+            startupP0FirstBoundQpc_.load(std::memory_order_acquire);
+        stats.startupP0FirstBoundFrames =
+            startupP0FirstBoundFrames_.load(std::memory_order_acquire);
+    }
+    return stats;
 }
  
 AudioCoreRuntimeStats AudioCoreRuntime::StatsLocked() const noexcept {
@@ -1862,6 +1994,12 @@ AudioCoreRuntimeStats AudioCoreRuntime::StatsLocked() const noexcept {
     stats.graphRate = graphRate_;
     stats.graphChannels = graphChannels_;
     stats.graphSourceBits = graphSourceBits_;
+    stats.graphUnit = graphUnit_;
+    stats.graphConverter = graphConverter_;
+    stats.graphObservationId = graphObservationId_;
+    stats.pendingGraphBindConverter = pendingGraphBind_.converter;
+    stats.pendingGraphBindObservationId = pendingGraphBind_.observationId;
+    stats.pendingGraphBindRegistrationId = pendingGraphBind_.registrationId;
     stats.requiredPrebufferFrames = requiredPrebufferFrames_;
     return stats;
 }
