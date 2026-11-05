@@ -886,8 +886,8 @@ struct V2P1SignatureSlot {
     std::atomic<std::uint64_t> firstNonZeroSampleTimeBits{};
     std::atomic<std::uint32_t> firstNonZeroFrames{};
     std::atomic<std::uint32_t> lastNonZeroFrames{};
-    std::atomic<std::uint64_t> lastSampleTimeBits{};
-    std::atomic<std::uint64_t> lastHostTime{};
+    // Reuse lastSampleTimeBits and lastHostTime declared above for
+    // timestamp continuity tracking on this AudioUnit/bus.
     std::atomic<std::uint64_t> repeatedSignatureCalls{};
     std::atomic<std::uint64_t> timestampRepeatedCalls{};
     std::atomic<std::uint64_t> timestampDiscontinuityCalls{};
