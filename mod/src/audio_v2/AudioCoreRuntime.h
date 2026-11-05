@@ -502,6 +502,9 @@ private:
     std::atomic<std::uint32_t> pendingCompressedChannels_{};
     std::atomic<std::uint32_t> pendingCompressedBits_{};
     std::atomic<void*> pendingCompressedConverter_{};
+    // Bound how long a cookie-pinned P0 converter may hold native pulls while
+    // its exact AudioUnit graph observation is still catching up.
+    std::atomic<ULONGLONG> pendingCompressedPrecisionTick_{};
 
     std::atomic<std::uint64_t> rawFillCalls_{};
     std::atomic<std::uint64_t> fillSuccessWithData_{};
