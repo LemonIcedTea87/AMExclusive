@@ -1188,14 +1188,25 @@ void AudioCoreRuntime::OnAudioUnitInputFormatUpdated(
     ControlScope lock(*this);
     ExtendSeekQuietPeriodLocked();
     // A delayed property notification from a retired AudioUnit must never
-    // retarget the currently selected graph.
-    if (graphUnit_ != unit || graphRate_ != sampleRate || graphChannels_ != channels) {
+    // retarget the currently selected graph. The same live AudioUnit can,
+    // however, receive a new stream format in place when Apple switches the
+    // selected media item. Accept a rate change only with a newer, exact
+    // observation so stale format notifications cannot roll the graph back.
+    if (graphUnit_ != unit || graphChannels_ != channels) return;
+    const bool graphRateChanged = graphRate_ != sampleRate;
+    if ((observationId != 0 && graphObservationId_ != 0 &&
+         observationId < graphObservationId_) ||
+        (graphRateChanged &&
+         (observationId == 0 || observationId <= graphObservationId_))) {
         return;
     }
 
     void* candidateConverter = nullptr;
     (void)registry_.FindCandidate(sampleRate, channels, sourceBitDepth,
                                   observationId, candidateConverter);
+    // A changed rate must resolve to the converter registered for that exact
+    // observation. Do not switch the graph to an unconfirmed format tuple.
+    if (graphRateChanged && (!candidateConverter || observationId == 0)) return;
     const auto pendingDeferred =
         pendingDeferredConverter_.load(std::memory_order_acquire);
     const bool provisionalCapturePendingForUnit = provisionalCaptureConverter_ &&
@@ -1222,6 +1233,8 @@ void AudioCoreRuntime::OnAudioUnitInputFormatUpdated(
     // Preserve graphStarted_ and graphOutputUnit_: the parent AudioOutputUnit
     // can already have started while this more precise property was pending.
     graphConverter_ = candidateConverter;
+    graphRate_ = sampleRate;
+    graphChannels_ = channels;
     graphSourceBits_ = sourceBitDepth;
     graphObservationId_ = observationId;
     if (candidateConverter && observationId != 0 &&
