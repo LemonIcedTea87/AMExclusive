@@ -923,11 +923,23 @@ bool AudioCoreRuntime::ArmProvisionalPendingCaptureLocked(
     bool precisionEvidenceForConverter) noexcept {
     const auto& registration = snapshot.registration;
     const auto now = GetTickCount64();
+    // During cold startup, the child graph may be initialized before its
+    // exact observation is propagated back from the decoder thread. In that
+    // narrow window, the ALAC/QLAC cookie can still pin precision to this
+    // exact P0 converter. Permit provisional capture only for that exact
+    // cookie-pinned handle; once the graph has an observation, it must match
+    // exactly and a cookie must never override a conflicting graph identity.
+    const bool exactGraphObservation = graphObservationId_ != 0 &&
+        registration.observationId == graphObservationId_;
+    const bool graphObservationPending = graphObservationId_ == 0 &&
+        pendingCompressedConverter_.load(std::memory_order_acquire) ==
+            registration.converter;
     if (!UiEnabled() || !precisionEvidenceForConverter || !graphUnit_ || graphBound_ ||
         coordinator_.Phase() != AudioCoreGatePhase::Off ||
         endOfStreamDrainPending_ || streamingProducerDrainPending_ ||
         seekFence_ || graphConverter_ || graphSourceBits_ != 0 ||
-        graphObservationId_ == 0 || registration.observationId != graphObservationId_ ||
+        (!exactGraphObservation && !graphObservationPending) ||
+        registration.observationId == 0 ||
         graphRate_ < 8000 || graphRate_ > 768000 ||
         graphChannels_ != 2 || registration.outputFormat.sampleRate != graphRate_ ||
         registration.outputFormat.channels != graphChannels_ ||
