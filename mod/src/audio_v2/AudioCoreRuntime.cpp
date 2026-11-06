@@ -1241,7 +1241,9 @@ void AudioCoreRuntime::OnAudioUnitInputFormatUpdated(
         if (observationId == 0 ||
             !registry_.FindCandidateAnyPrecision(
                 sampleRate, channels, observationId,
-                candidateConverter, resolvedSourceBitDepth)) {
+                candidateConverter, resolvedSourceBitDepth) ||
+            !IsSupportedSourceDepth(
+                static_cast<std::uint16_t>(resolvedSourceBitDepth))) {
             return;
         }
         Log(L"v2 graph input format precision resolved from exact P0 observation unit=" +
@@ -1370,6 +1372,7 @@ void AudioCoreRuntime::OnAudioUnitInputFormatUpdated(
     TryBindGraphLocked();
     Wake();
 }
+
 void AudioCoreRuntime::OnAudioUnitStarted(void* unit) noexcept {
     if (!UiEnabled()) return;
     ControlScope lock(*this);
