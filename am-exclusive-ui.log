@@ -1,25 +1,40 @@
-2026-11-06T21:00:00.633 pid=18688 tid=15760 UI adapter loaded
-2026-11-06T21:00:00.633 pid=18688 tid=15760 UI window lifecycle WinEvent hook=379717555
-2026-11-06T21:00:00.633 pid=18688 tid=1644 UI broker IPC connected
-2026-11-06T21:00:01.259 pid=18688 tid=5548 UI dispatcher bound window=MainWindow
-2026-11-06T21:00:01.261 pid=18688 tid=5548 Apple player observation failed stage=Player::PlayerState IPlayer QueryInterface hr=0x80004002
-2026-11-06T21:00:01.277 pid=18688 tid=5548 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=206 hosts=9 maxRefreshMs=16
-2026-11-06T21:00:10.031 pid=18688 tid=5548 UI work window=MainWindow refreshes=6 routeScans=6 transportScans=6 routeNodes=254 hosts=11 maxRefreshMs=31
-2026-11-06T21:00:15.692 pid=18688 tid=5548 UI work window=MainWindow refreshes=11 routeScans=10 transportScans=11 routeNodes=254 hosts=11 maxRefreshMs=63
-2026-11-06T21:00:20.703 pid=18688 tid=5548 UI work window=MainWindow refreshes=20 routeScans=18 transportScans=20 routeNodes=254 hosts=11 maxRefreshMs=63
-2026-11-06T21:00:25.716 pid=18688 tid=5548 UI work window=MainWindow refreshes=12 routeScans=10 transportScans=12 routeNodes=281 hosts=11 maxRefreshMs=62
-2026-11-06T21:00:30.756 pid=18688 tid=5548 UI work window=MainWindow refreshes=3 routeScans=3 transportScans=3 routeNodes=299 hosts=11 maxRefreshMs=47
-2026-11-06T21:00:40.703 pid=18688 tid=5548 UI work window=MainWindow refreshes=4 routeScans=3 transportScans=4 routeNodes=299 hosts=11 maxRefreshMs=62
-2026-11-06T21:00:45.701 pid=18688 tid=5548 UI work window=MainWindow refreshes=3 routeScans=2 transportScans=3 routeNodes=299 hosts=11 maxRefreshMs=62
-2026-11-06T21:00:53.433 pid=18688 tid=5548 UI work window=MainWindow refreshes=4 routeScans=2 transportScans=4 routeNodes=299 hosts=11 maxRefreshMs=78
-2026-11-06T21:00:57.452 pid=8360 tid=33116 UI adapter loaded
-2026-11-06T21:00:57.452 pid=8360 tid=33116 UI window lifecycle WinEvent hook=371065219
-2026-11-06T21:00:57.452 pid=8360 tid=22768 UI broker IPC connected
-2026-11-06T21:00:57.722 pid=8360 tid=25276 UI dispatcher bound window=MainWindow
-2026-11-06T21:00:57.725 pid=8360 tid=25276 Apple player observation failed stage=Player::PlayerState IPlayer QueryInterface hr=0x80004002
-2026-11-06T21:00:57.741 pid=8360 tid=25276 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=206 hosts=9 maxRefreshMs=16
-2026-11-06T21:01:02.747 pid=8360 tid=25276 UI work window=MainWindow refreshes=23 routeScans=20 transportScans=20 routeNodes=254 hosts=11 maxRefreshMs=47
-2026-11-06T21:01:11.622 pid=8360 tid=25276 UI work window=MainWindow refreshes=10 routeScans=9 transportScans=10 routeNodes=298 hosts=11 maxRefreshMs=78
-2026-11-06T21:01:17.521 pid=8360 tid=25276 UI work window=MainWindow refreshes=4 routeScans=3 transportScans=4 routeNodes=299 hosts=11 maxRefreshMs=63
-2026-11-06T21:01:22.539 pid=8360 tid=25276 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=297 hosts=11 maxRefreshMs=47
-2026-11-06T21:01:27.534 pid=8360 tid=25276 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=11 maxRefreshMs=46
+2026-11-06T21:41:55.548 pid=23688 tid=25096 UI adapter loaded
+2026-11-06T21:41:55.548 pid=23688 tid=25096 UI window lifecycle WinEvent hook=1112671839
+2026-11-06T21:41:55.548 pid=23688 tid=12320 UI broker IPC connected
+2026-11-06T21:41:56.508 pid=23688 tid=18444 UI dispatcher bound window=MainWindow
+2026-11-06T21:41:56.509 pid=23688 tid=18444 Apple player observation failed stage=Player::PlayerState IPlayer QueryInterface hr=0x80004002
+2026-11-06T21:41:56.529 pid=23688 tid=18444 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=206 hosts=9 maxRefreshMs=16
+2026-11-06T21:46:45.441 pid=6972 tid=26220 UI adapter loaded
+2026-11-06T21:46:45.443 pid=6972 tid=26220 UI window lifecycle WinEvent hook=18482607
+2026-11-06T21:46:45.443 pid=6972 tid=14252 UI broker IPC connected
+2026-11-06T21:46:46.025 pid=6972 tid=9748 UI dispatcher bound window=MainWindow
+2026-11-06T21:46:46.027 pid=6972 tid=9748 Apple player observation failed stage=Player::PlayerState IPlayer QueryInterface hr=0x80004002
+2026-11-06T21:46:46.041 pid=6972 tid=9748 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=206 hosts=9 maxRefreshMs=16
+2026-11-06T21:46:51.820 pid=6972 tid=9748 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=254 hosts=11 maxRefreshMs=15
+2026-11-06T21:46:57.273 pid=6972 tid=9748 UI work window=MainWindow refreshes=14 routeScans=14 transportScans=14 routeNodes=254 hosts=11 maxRefreshMs=47
+2026-11-06T21:47:04.307 pid=6972 tid=9748 UI work window=MainWindow refreshes=6 routeScans=5 transportScans=6 routeNodes=299 hosts=11 maxRefreshMs=63
+2026-11-06T21:47:10.517 pid=6972 tid=9748 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=299 hosts=11 maxRefreshMs=47
+2026-11-06T21:47:15.516 pid=6972 tid=9748 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=299 hosts=11 maxRefreshMs=47
+2026-11-06T21:47:25.518 pid=6972 tid=9748 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=299 hosts=11 maxRefreshMs=47
+2026-11-06T21:47:27.753 pid=19844 tid=22308 UI adapter loaded
+2026-11-06T21:47:27.753 pid=19844 tid=22308 UI window lifecycle WinEvent hook=1115621
+2026-11-06T21:47:27.755 pid=19844 tid=22308 GetAppProperty(MainWindow) failed hr=0x8000000b
+2026-11-06T21:47:27.755 pid=19844 tid=24480 UI broker IPC connected
+2026-11-06T21:47:27.807 pid=19844 tid=22308 GetAppProperty(MainWindow) failed hr=0x8000000b
+2026-11-06T21:47:27.810 pid=19844 tid=22308 GetAppProperty(MainWindow) failed hr=0x8000000b
+2026-11-06T21:47:27.813 pid=19844 tid=22308 GetAppProperty(MainWindow) failed hr=0x8000000b
+2026-11-06T21:47:27.814 pid=19844 tid=22308 GetAppProperty(MainWindow) failed hr=0x8000000b
+2026-11-06T21:47:27.814 pid=19844 tid=22308 GetAppProperty(MainWindow) failed hr=0x8000000b
+2026-11-06T21:47:27.825 pid=19844 tid=22308 GetAppProperty(MainWindow) failed hr=0x8000000b
+2026-11-06T21:47:28.889 pid=19844 tid=5276 UI dispatcher bound window=MainWindow
+2026-11-06T21:47:28.892 pid=19844 tid=5276 Apple player observation failed stage=Player::PlayerState IPlayer QueryInterface hr=0x80004002
+2026-11-06T21:47:28.912 pid=19844 tid=5276 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=206 hosts=9 maxRefreshMs=31
+2026-11-06T21:47:34.884 pid=19844 tid=5276 UI work window=MainWindow refreshes=6 routeScans=2 transportScans=2 routeNodes=244 hosts=9 maxRefreshMs=63
+2026-11-06T21:47:40.377 pid=19844 tid=5276 UI work window=MainWindow refreshes=11 routeScans=10 transportScans=11 routeNodes=249 hosts=10 maxRefreshMs=63
+2026-11-06T21:47:45.390 pid=19844 tid=5276 UI work window=MainWindow refreshes=26 routeScans=26 transportScans=26 routeNodes=252 hosts=10 maxRefreshMs=63
+2026-11-06T21:47:52.897 pid=19844 tid=5276 UI work window=MainWindow refreshes=5 routeScans=5 transportScans=5 routeNodes=296 hosts=10 maxRefreshMs=110
+2026-11-06T21:47:57.902 pid=19844 tid=5276 UI work window=MainWindow refreshes=3 routeScans=3 transportScans=3 routeNodes=297 hosts=10 maxRefreshMs=109
+2026-11-06T21:48:02.906 pid=19844 tid=5276 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=109
+2026-11-06T21:48:07.903 pid=19844 tid=5276 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=109
+2026-11-06T21:48:12.908 pid=19844 tid=5276 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=109
+2026-11-06T21:48:17.813 pid=19844 tid=22308 GetAppProperty(MainWindow) failed hr=0x8000000b
