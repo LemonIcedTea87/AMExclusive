@@ -3812,21 +3812,63 @@ AppleOSStatus __cdecl HookV2AudioUnitSetProperty(void* unit, std::uint32_t prope
                                                   std::uint32_t scope, std::uint32_t element,
                                                   const void* data, std::uint32_t dataSize) {
     if (ammod::ProcessExiting()) return g_v2OriginalAudioUnitSetProperty ? g_v2OriginalAudioUnitSetProperty(unit, propertyId, scope, element, data, dataSize) : -1;
-    const auto result = g_v2OriginalAudioUnitSetProperty
-        ? g_v2OriginalAudioUnitSetProperty(unit, propertyId, scope, element, data, dataSize)
-        : -1;
-    // Property 14 is kAudioUnitProperty_MaximumFramesPerSlice. Keep this
-    // diagnostic-only: a render request larger than this limit can fail with
-    // kAudioUnitErr_TooManyFramesToProcess (-10874).
-    if (result == 0 && g_nativeTraceEnabled.load(std::memory_order_acquire) &&
-        propertyId == 14 && scope == 0 && data && dataSize >= sizeof(std::uint32_t)) {
-        std::uint32_t maximumFrames{};
-        std::memcpy(&maximumFrames, data, sizeof(maximumFrames));
+    // The startup trace exposed one native AU render request of 8448 frames
+    // against a 4096-frame limit. In explicit native-trace mode only, raise
+    // this non-I/O unit's limit before initialization so the observed request
+    // can be rendered. Normal runs retain Apple's original value unchanged.
+    constexpr std::uint32_t kObservedStartupRenderFrames = 8448;
+    const bool traceEnabled = g_nativeTraceEnabled.load(std::memory_order_acquire);
+    bool maximumFramesOverrideAttempted = false;
+    bool maximumFramesOverrideApplied = false;
+    std::uint32_t requestedMaximumFrames{};
+    AppleOSStatus maximumFramesOverrideResult = 0;
+    AppleOSStatus result = -1;
+    if (g_v2OriginalAudioUnitSetProperty) {
+        if (traceEnabled && propertyId == 14 && scope == 0 && element == 0 &&
+            data && dataSize == sizeof(std::uint32_t)) {
+            std::memcpy(&requestedMaximumFrames, data, sizeof(requestedMaximumFrames));
+            if (requestedMaximumFrames == 4096) {
+                maximumFramesOverrideAttempted = true;
+                maximumFramesOverrideResult = g_v2OriginalAudioUnitSetProperty(
+                    unit, propertyId, scope, element, &kObservedStartupRenderFrames,
+                    sizeof(kObservedStartupRenderFrames));
+                if (maximumFramesOverrideResult == 0) {
+                    maximumFramesOverrideApplied = true;
+                    result = maximumFramesOverrideResult;
+                } else {
+                    // Preserve the original setup if this AudioUnit rejects the
+                    // larger pre-initialization limit.
+                    result = g_v2OriginalAudioUnitSetProperty(
+                        unit, propertyId, scope, element, data, dataSize);
+                }
+            } else {
+                result = g_v2OriginalAudioUnitSetProperty(
+                    unit, propertyId, scope, element, data, dataSize);
+            }
+        } else {
+            result = g_v2OriginalAudioUnitSetProperty(
+                unit, propertyId, scope, element, data, dataSize);
+        }
+    }
+    if (result == 0 && traceEnabled &&
+        propertyId == 14 && scope == 0 && data && dataSize == sizeof(std::uint32_t)) {
+        const auto appliedMaximumFrames = maximumFramesOverrideApplied
+            ? kObservedStartupRenderFrames : requestedMaximumFrames;
         Log(L"native trace AudioUnit maximum frames per slice SET unit=" +
             std::to_wstring(reinterpret_cast<std::uintptr_t>(unit)) +
-            L" value=" + std::to_wstring(maximumFrames) +
+            L" requested=" + std::to_wstring(maximumFramesOverrideAttempted
+                ? requestedMaximumFrames : appliedMaximumFrames) +
+            L" value=" + std::to_wstring(appliedMaximumFrames) +
+            L" overrideApplied=" + std::to_wstring(maximumFramesOverrideApplied) +
             L" scope=" + std::to_wstring(scope) +
             L" element=" + std::to_wstring(element));
+    } else if (maximumFramesOverrideAttempted && !maximumFramesOverrideApplied) {
+        Log(L"native trace AudioUnit maximum frames per slice override rejected unit=" +
+            std::to_wstring(reinterpret_cast<std::uintptr_t>(unit)) +
+            L" requested=" + std::to_wstring(requestedMaximumFrames) +
+            L" target=" + std::to_wstring(kObservedStartupRenderFrames) +
+            L" overrideResult=" + std::to_wstring(maximumFramesOverrideResult) +
+            L" fallbackResult=" + std::to_wstring(result));
     }
     if (result != 0 && g_audioCoreRuntime.UiEnabled()) {
         Log(L"v2 AudioUnitSetProperty failed unit=" +
