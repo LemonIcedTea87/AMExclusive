@@ -54,6 +54,8 @@ struct AudioCoreRuntimeCallbacks final {
     bool (*tryAcquireProducer)(void*) noexcept{};
     void (*releaseProducer)(void*) noexcept{};
     void (*onConverterBound)(void*, void*) noexcept{};
+    // Optional bridge for runtime diagnostics; the HookDll owns the log sink.
+    void (*onDiagnostic)(void*, const wchar_t*) noexcept{};
 };
 
 struct AudioCorePcmFillStats final {

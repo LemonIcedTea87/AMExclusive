@@ -972,6 +972,15 @@ void Log(const std::wstring& message) {
     ammod::logging::AppendWideLine(g_logPath, g_logMutex, line.str(), 8ull * 1024ull * 1024ull, 2);
 }
 
+void V2OnDiagnostic(void*, const wchar_t* message) noexcept {
+    if (!message) return;
+    try {
+        Log(std::wstring(message));
+    } catch (...) {
+        // Diagnostics must never escape into an AudioUnit callback.
+    }
+}
+
 void ArmResumeP0FillTrace(const wchar_t* reason) {
     // Arm before applying the transport toggle. This avoids racing the runtime
     // worker that may observe the first fresh P0 frames and clear the pending
@@ -4797,7 +4806,8 @@ DWORD WINAPI InitializeHooks(void*) {
         &V2ResumeNativeGraphAfterFailedHandoff, kNativeAcquisitionPassthrough,
         g_nativeTraceEnabled.load(std::memory_order_acquire),
         &AudioCoreRuntimeEventCallback, &CaptureRuntimeEventContext, &PublishRuntimeEventBoundary,
-        &TryAcquirePcmProducer, &ReleasePcmProducer, &PromoteBoundLocalConverter};
+        &TryAcquirePcmProducer, &ReleasePcmProducer, &PromoteBoundLocalConverter,
+        &V2OnDiagnostic};
     if (!g_audioCoreRuntime.Start(runtimeCallbacks)) {
         Log(L"audio core v2 runtime worker failed to start; core remains fail-closed");
     }

@@ -1246,13 +1246,17 @@ void AudioCoreRuntime::OnAudioUnitInputFormatUpdated(
                 static_cast<std::uint16_t>(resolvedSourceBitDepth))) {
             return;
         }
-        Log(L"v2 graph input format precision resolved from exact P0 observation unit=" +
+        const std::wstring diagnostic =
+            L"v2 graph input format precision resolved from exact P0 observation unit=" +
             std::to_wstring(reinterpret_cast<std::uintptr_t>(unit)) +
             L" converter=" +
             std::to_wstring(reinterpret_cast<std::uintptr_t>(candidateConverter)) +
             L" rate=" + std::to_wstring(sampleRate) +
             L" bits=" + std::to_wstring(resolvedSourceBitDepth) +
-            L" observation=" + std::to_wstring(observationId));
+            L" observation=" + std::to_wstring(observationId);
+        if (callbacks_.onDiagnostic) {
+            callbacks_.onDiagnostic(callbacks_.context, diagnostic.c_str());
+        }
     } else {
         (void)registry_.FindCandidate(sampleRate, channels, resolvedSourceBitDepth,
                                       observationId, candidateConverter);
@@ -1310,12 +1314,16 @@ void AudioCoreRuntime::OnAudioUnitInputFormatUpdated(
         if (!exactPendingCandidate || !unresolvedStartedGraph) return;
 
         provisionalUnitRetarget = true;
-        Log(L"v2 provisional P0 input format adopted as graph unit old=" +
+        const std::wstring diagnostic =
+            L"v2 provisional P0 input format adopted as graph unit old=" +
             std::to_wstring(reinterpret_cast<std::uintptr_t>(graphUnit_)) +
             L" new=" + std::to_wstring(reinterpret_cast<std::uintptr_t>(unit)) +
             L" converter=" +
             std::to_wstring(reinterpret_cast<std::uintptr_t>(candidateConverter)) +
-            L" observation=" + std::to_wstring(observationId));
+            L" observation=" + std::to_wstring(observationId);
+        if (callbacks_.onDiagnostic) {
+            callbacks_.onDiagnostic(callbacks_.context, diagnostic.c_str());
+        }
     }
 
     // A changed rate must resolve to the converter for that exact observation.
