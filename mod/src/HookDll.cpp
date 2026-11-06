@@ -2989,9 +2989,10 @@ AppleOSStatus __cdecl HookV2AudioConverterSetProperty(void* converter,
         ? reinterpret_cast<std::uintptr_t>(_ReturnAddress()) : 0;
     const auto propertyDataPrefix = nativeTrace && cursorProperty
         ? CaptureNativeTraceRawBytes(data, dataSize) : NativeTraceRawBytes{};
-    const bool trackedP0Cursor = nativeTrace && cursorProperty &&
+    const bool captureCursorTarget = nativeTrace && cursorProperty;
+    const bool trackedP0Cursor = captureCursorTarget &&
         g_audioCoreRuntime.IsP0Converter(converter);
-    const auto cursorTargetPrefix = trackedP0Cursor
+    const auto cursorTargetPrefix = captureCursorTarget
         ? CaptureNativeTraceCursorTarget(data, dataSize) : NativeTraceRawBytes{};
     const bool serializedCursorUpdate = cursorProperty && g_nativeP0Puller.Tracks(converter);
     std::unique_lock<std::mutex> p0PropertyLock;
@@ -3025,6 +3026,9 @@ AppleOSStatus __cdecl HookV2AudioConverterSetProperty(void* converter,
                             : NativeTraceScalarText(data, dataSize)) +
             L" enterQpc=" + std::to_wstring(propertyQpcEnter) +
             L" returnQpc=" + std::to_wstring(propertyQpcReturn) +
+            (captureCursorTarget
+                ? L" cursorTarget=" + NativeTraceRawBytesText(cursorTargetPrefix)
+                : L"") +
             L" stack=" + CaptureCurrentStackText(2, 6));
     }
     if (nativeTrace && cursorProperty && g_audioCoreRuntime.UiEnabled() &&
@@ -3167,9 +3171,10 @@ AppleOSStatus __cdecl HookV2AudioConverterGetProperty(void* converter,
     const auto propertyDataSize = dataSize ? *dataSize : 0u;
     const auto propertyDataPrefix = nativeTrace && cursorProperty
         ? CaptureNativeTraceRawBytes(data, propertyDataSize) : NativeTraceRawBytes{};
-    const bool trackedP0Cursor = nativeTrace && cursorProperty &&
+    const bool captureCursorTarget = nativeTrace && cursorProperty;
+    const bool trackedP0Cursor = captureCursorTarget &&
         g_audioCoreRuntime.IsP0Converter(converter);
-    const auto cursorTargetPrefix = trackedP0Cursor
+    const auto cursorTargetPrefix = captureCursorTarget
         ? CaptureNativeTraceCursorTarget(data, propertyDataSize) : NativeTraceRawBytes{};
     if (nativeTrace &&
         g_nativeTracePropertyCalls.fetch_add(1, std::memory_order_relaxed) < 256) {
@@ -3185,6 +3190,9 @@ AppleOSStatus __cdecl HookV2AudioConverterGetProperty(void* converter,
                             : NativeTraceScalarText(data, propertyDataSize)) +
             L" enterQpc=" + std::to_wstring(propertyQpcEnter) +
             L" returnQpc=" + std::to_wstring(propertyQpcReturn) +
+            (captureCursorTarget
+                ? L" cursorTarget=" + NativeTraceRawBytesText(cursorTargetPrefix)
+                : L"") +
             L" stack=" + CaptureCurrentStackText(2, 6));
     }
     if (nativeTrace && cursorProperty && g_audioCoreRuntime.UiEnabled() &&
