@@ -139,6 +139,8 @@ using AudioConverterResetFn = AppleOSStatus(__cdecl*)(void*);
 using AudioConverterDisposeFn = AppleOSStatus(__cdecl*)(void*);
 using AudioUnitSetPropertyFn = AppleOSStatus(__cdecl*)(
     void*, std::uint32_t, std::uint32_t, std::uint32_t, const void*, std::uint32_t);
+using AudioUnitGetPropertyFn = AppleOSStatus(__cdecl*)(
+    void*, std::uint32_t, std::uint32_t, std::uint32_t, void*, std::uint32_t*);
 using AudioOutputUnitStartFn = AppleOSStatus(__cdecl*)(void*);
 using AudioOutputUnitStopFn = AppleOSStatus(__cdecl*)(void*);
 using AudioUnitInitializeFn = AppleOSStatus(__cdecl*)(void*);
@@ -212,6 +214,7 @@ AudioConverterFillComplexBufferFn g_v2OriginalAudioConverterFillComplexBuffer{};
 AudioConverterResetFn g_v2OriginalAudioConverterReset{};
 AudioConverterDisposeFn g_v2OriginalAudioConverterDispose{};
 AudioUnitSetPropertyFn g_v2OriginalAudioUnitSetProperty{};
+AudioUnitGetPropertyFn g_v2AudioUnitGetProperty{};
 AudioUnitRenderFn g_v2OriginalAudioUnitRender{};
 AudioOutputUnitStartFn g_v2OriginalAudioOutputUnitStart{};
 AudioOutputUnitStopFn g_v2OriginalAudioOutputUnitStop{};
@@ -3812,6 +3815,19 @@ AppleOSStatus __cdecl HookV2AudioUnitSetProperty(void* unit, std::uint32_t prope
     const auto result = g_v2OriginalAudioUnitSetProperty
         ? g_v2OriginalAudioUnitSetProperty(unit, propertyId, scope, element, data, dataSize)
         : -1;
+    // Property 14 is kAudioUnitProperty_MaximumFramesPerSlice. Keep this
+    // diagnostic-only: a render request larger than this limit can fail with
+    // kAudioUnitErr_TooManyFramesToProcess (-10874).
+    if (result == 0 && g_nativeTraceEnabled.load(std::memory_order_acquire) &&
+        propertyId == 14 && scope == 0 && data && dataSize >= sizeof(std::uint32_t)) {
+        std::uint32_t maximumFrames{};
+        std::memcpy(&maximumFrames, data, sizeof(maximumFrames));
+        Log(L"native trace AudioUnit maximum frames per slice SET unit=" +
+            std::to_wstring(reinterpret_cast<std::uintptr_t>(unit)) +
+            L" value=" + std::to_wstring(maximumFrames) +
+            L" scope=" + std::to_wstring(scope) +
+            L" element=" + std::to_wstring(element));
+    }
     if (result != 0 && g_audioCoreRuntime.UiEnabled()) {
         Log(L"v2 AudioUnitSetProperty failed unit=" +
             std::to_wstring(reinterpret_cast<std::uintptr_t>(unit)) +
@@ -3900,6 +3916,8 @@ AppleOSStatus __cdecl HookV2AudioUnitRender(void* unit, std::uint32_t* actionFla
     }
     const auto result = g_v2OriginalAudioUnitRender
         ? g_v2OriginalAudioUnitRender(unit, actionFlags, timestamp, bus, frames, buffers) : -1;
+    const auto renderErrorStack = deepDiagnostics && result != 0
+        ? CaptureCurrentStackText(2, 8) : std::wstring{};
     const auto call = g_v2ObservedRenderCalls.fetch_add(1, std::memory_order_relaxed) + 1;
     if (result != 0) g_v2P1RenderErrors.fetch_add(1, std::memory_order_relaxed);
     if (!deepDiagnostics) return result;
@@ -4115,7 +4133,8 @@ AppleOSStatus __cdecl HookV2AudioUnitRender(void* unit, std::uint32_t* actionFla
             L" allZero=" + std::to_wstring(signatureAttempted && signature.allZero) +
             L" repeatedSignature=" + std::to_wstring(repeatedSignature) +
             L" repeatedTimestamp=" + std::to_wstring(repeatedTimestamp) +
-            L" timestampDiscontinuity=" + std::to_wstring(timestampDiscontinuity));
+            L" timestampDiscontinuity=" + std::to_wstring(timestampDiscontinuity) +
+            (result != 0 ? L" callerStack=" + renderErrorStack : L""));
     }
     return result;
 }
@@ -4124,6 +4143,20 @@ AppleOSStatus __cdecl HookV2AudioUnitInitialize(void* unit) {
     if (ammod::ProcessExiting()) return g_v2OriginalAudioUnitInitialize ? g_v2OriginalAudioUnitInitialize(unit) : -1;
     const auto result = g_v2OriginalAudioUnitInitialize
         ? g_v2OriginalAudioUnitInitialize(unit) : -1;
+    if (result == 0 && g_nativeTraceEnabled.load(std::memory_order_acquire)) {
+        // Read back the effective limit after initialization. This API is only
+        // queried on the setup thread, never from AudioUnitRender's real-time path.
+        std::uint32_t maximumFrames{};
+        std::uint32_t dataSize = sizeof(maximumFrames);
+        const auto queryResult = g_v2AudioUnitGetProperty
+            ? g_v2AudioUnitGetProperty(unit, 14, 0, 0, &maximumFrames, &dataSize)
+            : static_cast<AppleOSStatus>(-1);
+        Log(L"native trace AudioUnit maximum frames per slice GET unit=" +
+            std::to_wstring(reinterpret_cast<std::uintptr_t>(unit)) +
+            L" result=" + std::to_wstring(queryResult) +
+            L" value=" + std::to_wstring(maximumFrames) +
+            L" dataSize=" + std::to_wstring(dataSize));
+    }
     if (result != 0 && g_audioCoreRuntime.UiEnabled()) {
         Log(L"v2 AudioUnitInitialize failed unit=" +
             std::to_wstring(reinterpret_cast<std::uintptr_t>(unit)) +
@@ -4564,6 +4597,8 @@ bool InstallAudioCoreV2Hooks() {
     if (g_audioCoreV2HooksInstalled.load(std::memory_order_acquire)) return true;
     HMODULE toolbox = GetModuleHandleW(L"CoreAudioToolbox.dll");
     if (!toolbox) return false;
+    g_v2AudioUnitGetProperty = reinterpret_cast<AudioUnitGetPropertyFn>(
+        GetProcAddress(toolbox, "AudioUnitGetProperty"));
     auto installToolbox = [toolbox](const char* name, void* detour, auto& original,
                                     const wchar_t* label) {
         auto* target = GetProcAddress(toolbox, name);
