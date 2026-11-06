@@ -253,15 +253,22 @@ bool TrySendConnectedMessage(const Message& message) {
     return WriteMessage(g_pipe, message);
 }
 
+std::uint64_t TransportQpc() noexcept {
+    LARGE_INTEGER value{};
+    return QueryPerformanceCounter(&value) && value.QuadPart > 0
+        ? static_cast<std::uint64_t>(value.QuadPart) : 0;
+}
+
 void QueueTransport(std::wstring_view action, std::uint64_t epoch = 0) {
     if (action.empty()) return;
+    const auto qpc = TransportQpc();
     auto message = NewMessage(MessageType::TransportIntent, Role::Ui);
     message.uiPid = GetCurrentProcessId();
     message.generation = epoch;
     wcsncpy_s(message.detail, action.data(), _TRUNCATE);
     if (TrySendConnectedMessage(message)) {
         Log(L"transport sent immediate action=" + std::wstring(action) +
-            L" epoch=" + std::to_wstring(epoch));
+            L" epoch=" + std::to_wstring(epoch) + L" qpc=" + std::to_wstring(qpc));
         return;
     }
     {
@@ -269,7 +276,7 @@ void QueueTransport(std::wstring_view action, std::uint64_t epoch = 0) {
         g_transportPending.push_back(message);
     }
     Log(L"transport queued fallback action=" + std::wstring(action) +
-        L" epoch=" + std::to_wstring(epoch));
+        L" epoch=" + std::to_wstring(epoch) + L" qpc=" + std::to_wstring(qpc));
 }
 
 void QueueSkipIntent(bool pointerEvent) {
@@ -867,9 +874,7 @@ void QueuePlaybackState(const std::weak_ptr<UiWindowContext>& weak) noexcept {
 }
 
 std::uint64_t PlaybackRevision() noexcept {
-    LARGE_INTEGER revision{};
-    return QueryPerformanceCounter(&revision) && revision.QuadPart > 0
-        ? static_cast<std::uint64_t>(revision.QuadPart) : 0;
+    return TransportQpc();
 }
 
 void RevokePlaybackObserver(const std::shared_ptr<UiWindowContext>& context) noexcept {

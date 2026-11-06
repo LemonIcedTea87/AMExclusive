@@ -228,6 +228,8 @@ std::atomic<std::uint64_t> g_nativeTracePropertyCalls{};
 std::atomic<std::uint64_t> g_nativeTraceP0FillCalls{};
 std::atomic<std::uint64_t> g_nativeTraceP0NonEmptyCalls{};
 std::atomic<std::uint64_t> g_nativeTraceP0InputNonEmptyCalls{};
+std::atomic<std::uint64_t> g_nativeTraceTimelineSequence{};
+std::atomic<std::uint64_t> g_nativeTraceResetCalls{};
 std::atomic<std::uint64_t> g_p0CursorDiagnosticCalls{};
 std::atomic<void*> g_resumeP0TraceConverter{};
 std::atomic<ULONGLONG> g_resumeP0TraceUntilTick{};
@@ -1138,6 +1140,48 @@ std::wstring NativeTraceScalarText(const void* data, std::uint32_t dataSize) {
     std::wostringstream text;
     text << L" scalar=0x" << std::hex << value << std::dec;
     return text.str();
+}
+
+struct NativeTraceRawBytes final {
+    std::uint8_t bytes[16]{};
+    std::uint32_t count{};
+    bool valid{};
+};
+
+// Keep Apple's private cursor property opaque; capture only a bounded prefix.
+NativeTraceRawBytes CaptureNativeTraceRawBytes(const void* data,
+                                                std::uint32_t dataSize) noexcept {
+    NativeTraceRawBytes snapshot{};
+    if (!data || dataSize == 0) return snapshot;
+    snapshot.count = std::min<std::uint32_t>(
+        dataSize, static_cast<std::uint32_t>(std::size(snapshot.bytes)));
+    __try {
+        std::memcpy(snapshot.bytes, data, snapshot.count);
+        snapshot.valid = true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        snapshot = {};
+    }
+    return snapshot;
+}
+
+std::wstring NativeTraceRawBytesText(const NativeTraceRawBytes& snapshot) {
+    std::wostringstream text;
+    text << L" dataPrefix=";
+    if (!snapshot.valid) {
+        text << L"<unreadable>";
+    } else {
+        text << L"0x" << std::hex << std::setfill(L'0');
+        for (std::uint32_t index = 0; index < snapshot.count; ++index) {
+            text << std::setw(2) << static_cast<unsigned>(snapshot.bytes[index]);
+        }
+        text << std::dec;
+    }
+    text << L" dataPrefixBytes=" << snapshot.count;
+    return text.str();
+}
+
+std::uint64_t NextNativeTraceTimelineSequence() noexcept {
+    return g_nativeTraceTimelineSequence.fetch_add(1, std::memory_order_relaxed) + 1;
 }
 
 struct V2P1SignatureResult final {
@@ -2751,6 +2795,8 @@ AppleOSStatus __cdecl HookV2AudioConverterNewSpecific(
         g_nativeTraceEnabled.load(std::memory_order_acquire)) {
         Log(L"native trace AudioConverterNewSpecific converter=" +
             std::to_wstring(reinterpret_cast<std::uintptr_t>(*converter)) +
+            L" eventSeq=" + std::to_wstring(NextNativeTraceTimelineSequence()) +
+            L" qpc=" + std::to_wstring(CurrentQpc()) +
             L" classDescriptions=" + std::to_wstring(classDescriptionCount) +
             L" caller=" + CaptureCurrentStackText(2, 8) +
             L" source{" + AppleFormatText(source) + L"} destination{" +
@@ -2782,34 +2828,50 @@ AppleOSStatus __cdecl HookV2AudioConverterSetProperty(void* converter,
                                                       std::uint32_t dataSize,
                                                       const void* data) {
     if (ammod::ProcessExiting()) return g_v2OriginalAudioConverterSetProperty ? g_v2OriginalAudioConverterSetProperty(converter, propertyId, dataSize, data) : -1;
-    const bool serializedCursorUpdate = propertyId ==
-        ammod::apple_private::audio_converter_property::kCursor &&
-        g_nativeP0Puller.Tracks(converter);
+    const bool nativeTrace = g_nativeTraceEnabled.load(std::memory_order_acquire);
+    const bool cursorProperty =
+        propertyId == ammod::apple_private::audio_converter_property::kCursor;
+    const auto propertyQpcEnter = (nativeTrace || cursorProperty) ? CurrentQpc() : 0;
+    const auto propertyCaller = (nativeTrace || cursorProperty)
+        ? reinterpret_cast<std::uintptr_t>(_ReturnAddress()) : 0;
+    const auto propertyDataPrefix = cursorProperty
+        ? CaptureNativeTraceRawBytes(data, dataSize) : NativeTraceRawBytes{};
+    const bool serializedCursorUpdate = cursorProperty && g_nativeP0Puller.Tracks(converter);
     std::unique_lock<std::mutex> p0PropertyLock;
     if (serializedCursorUpdate) p0PropertyLock = std::unique_lock<std::mutex>(g_p0FillMutex);
     const auto result = g_v2OriginalAudioConverterSetProperty
         ? g_v2OriginalAudioConverterSetProperty(converter, propertyId, dataSize, data) : -1;
+    const auto propertyQpcReturn = (nativeTrace || cursorProperty) ? CurrentQpc() : 0;
     if (serializedCursorUpdate && result == 0) {
         g_nativeP0Puller.ResumeAfterCursorProperty(converter);
     }
-    if (g_nativeTraceEnabled.load(std::memory_order_acquire) &&
+    if (nativeTrace &&
         g_nativeTracePropertyCalls.fetch_add(1, std::memory_order_relaxed) < 256) {
         Log(L"native trace AudioConverterSetProperty converter=" +
             std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
+            L" eventSeq=" + std::to_wstring(NextNativeTraceTimelineSequence()) +
             L" property=0x" + HResultText(static_cast<HRESULT>(propertyId)).substr(2) +
             L" size=" + std::to_wstring(dataSize) + L" data=" +
             std::to_wstring(reinterpret_cast<std::uintptr_t>(data)) +
-            L" result=" + std::to_wstring(result) + NativeTraceScalarText(data, dataSize) +
-            L" stack=" +
-            CaptureCurrentStackText(2, 6));
+            L" caller=" + std::to_wstring(propertyCaller) +
+            L" result=" + std::to_wstring(result) +
+            (cursorProperty ? NativeTraceRawBytesText(propertyDataPrefix)
+                            : NativeTraceScalarText(data, dataSize)) +
+            L" enterQpc=" + std::to_wstring(propertyQpcEnter) +
+            L" returnQpc=" + std::to_wstring(propertyQpcReturn) +
+            L" stack=" + CaptureCurrentStackText(2, 6));
     }
     if (propertyId == ammod::apple_private::audio_converter_property::kCursor &&
         g_audioCoreRuntime.UiEnabled() && g_audioCoreRuntime.IsP0Converter(converter) &&
         g_p0CursorDiagnosticCalls.fetch_add(1, std::memory_order_relaxed) < 48) {
         Log(L"v2 P0 cursor SET converter=" +
             std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
+            L" eventSeq=" + std::to_wstring(NextNativeTraceTimelineSequence()) +
             L" size=" + std::to_wstring(dataSize) + L" result=" + std::to_wstring(result) +
-            NativeTraceScalarText(data, dataSize) + L" qpc=" + std::to_wstring(CurrentQpc()));
+            L" caller=" + std::to_wstring(propertyCaller) +
+            NativeTraceRawBytesText(propertyDataPrefix) +
+            L" enterQpc=" + std::to_wstring(propertyQpcEnter) +
+            L" returnQpc=" + std::to_wstring(propertyQpcReturn));
     }
     if (result == 0 && g_audioCoreRuntime.UiEnabled()) {
         ObserveAudioConverterProperty(L"SetProperty", converter, propertyId, data, dataSize,
@@ -2925,28 +2987,46 @@ AppleOSStatus __cdecl HookV2AudioConverterGetProperty(void* converter,
                                                        std::uint32_t* dataSize,
                                                        void* data) {
     if (ammod::ProcessExiting()) return g_v2OriginalAudioConverterGetProperty ? g_v2OriginalAudioConverterGetProperty(converter, propertyId, dataSize, data) : -1;
+    const bool nativeTrace = g_nativeTraceEnabled.load(std::memory_order_acquire);
+    const bool cursorProperty =
+        propertyId == ammod::apple_private::audio_converter_property::kCursor;
+    const auto propertyQpcEnter = (nativeTrace || cursorProperty) ? CurrentQpc() : 0;
+    const auto propertyCaller = (nativeTrace || cursorProperty)
+        ? reinterpret_cast<std::uintptr_t>(_ReturnAddress()) : 0;
     const auto result = g_v2OriginalAudioConverterGetProperty
         ? g_v2OriginalAudioConverterGetProperty(converter, propertyId, dataSize, data) : -1;
-    if (g_nativeTraceEnabled.load(std::memory_order_acquire) &&
+    const auto propertyQpcReturn = (nativeTrace || cursorProperty) ? CurrentQpc() : 0;
+    const auto propertyDataSize = dataSize ? *dataSize : 0u;
+    const auto propertyDataPrefix = cursorProperty
+        ? CaptureNativeTraceRawBytes(data, propertyDataSize) : NativeTraceRawBytes{};
+    if (nativeTrace &&
         g_nativeTracePropertyCalls.fetch_add(1, std::memory_order_relaxed) < 256) {
         Log(L"native trace AudioConverterGetProperty converter=" +
             std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
+            L" eventSeq=" + std::to_wstring(NextNativeTraceTimelineSequence()) +
             L" property=0x" + HResultText(static_cast<HRESULT>(propertyId)).substr(2) +
-            L" size=" + std::to_wstring(dataSize ? *dataSize : 0) +
+            L" size=" + std::to_wstring(propertyDataSize) +
             L" data=" + std::to_wstring(reinterpret_cast<std::uintptr_t>(data)) +
-            L" result=" + std::to_wstring(result) + NativeTraceScalarText(
-                data, dataSize ? *dataSize : 0) + L" stack=" +
-            CaptureCurrentStackText(2, 6));
+            L" caller=" + std::to_wstring(propertyCaller) +
+            L" result=" + std::to_wstring(result) +
+            (cursorProperty ? NativeTraceRawBytesText(propertyDataPrefix)
+                            : NativeTraceScalarText(data, propertyDataSize)) +
+            L" enterQpc=" + std::to_wstring(propertyQpcEnter) +
+            L" returnQpc=" + std::to_wstring(propertyQpcReturn) +
+            L" stack=" + CaptureCurrentStackText(2, 6));
     }
     if (propertyId == ammod::apple_private::audio_converter_property::kCursor &&
         g_audioCoreRuntime.UiEnabled() && g_audioCoreRuntime.IsP0Converter(converter) &&
         g_p0CursorDiagnosticCalls.fetch_add(1, std::memory_order_relaxed) < 48) {
         Log(L"v2 P0 cursor GET converter=" +
             std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
-            L" size=" + std::to_wstring(dataSize ? *dataSize : 0) +
+            L" eventSeq=" + std::to_wstring(NextNativeTraceTimelineSequence()) +
+            L" size=" + std::to_wstring(propertyDataSize) +
             L" result=" + std::to_wstring(result) +
-            NativeTraceScalarText(data, dataSize ? *dataSize : 0) +
-            L" qpc=" + std::to_wstring(CurrentQpc()));
+            L" caller=" + std::to_wstring(propertyCaller) +
+            NativeTraceRawBytesText(propertyDataPrefix) +
+            L" enterQpc=" + std::to_wstring(propertyQpcEnter) +
+            L" returnQpc=" + std::to_wstring(propertyQpcReturn));
     }
     if (result == 0 && g_audioCoreRuntime.UiEnabled() && data && dataSize &&
         *dataSize >= sizeof(AudioStreamBasicDescription) &&
@@ -3109,6 +3189,7 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
         if (traceP0InputPayload) {
             Log(L"native trace P0 input payload converter=" +
                 std::to_wstring(reinterpret_cast<std::uintptr_t>(trace->converter)) +
+                L" eventSeq=" + std::to_wstring(NextNativeTraceTimelineSequence()) +
                 L" fillCall=" + std::to_wstring(trace->fillCall) +
                 L" inputCall=" + std::to_wstring(trace->inputCalls) +
                 L" requestedPackets=" + std::to_wstring(requested) +
@@ -3135,6 +3216,7 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
             (trace->fillCall <= 64 || result != 0)) {
             Log(L"native trace input callback converter=" +
                 std::to_wstring(reinterpret_cast<std::uintptr_t>(trace->converter)) +
+                L" eventSeq=" + std::to_wstring(NextNativeTraceTimelineSequence()) +
                 L" fillCall=" + std::to_wstring(trace->fillCall) +
                 L" inputCall=" + std::to_wstring(trace->inputCalls) +
                 L" inputConverter=" +
@@ -3194,6 +3276,7 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
                     : 0.0;
                 Log(L"audio core v2 P0 PCM sample trace converter=" +
                     std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
+                    L" eventSeq=" + std::to_wstring(NextNativeTraceTimelineSequence()) +
                     L" sampleCall=" + std::to_wstring(sampleCall) +
                     L" producedPackets=" + std::to_wstring(producedPackets) +
                     L" result=" + std::to_wstring(result) +
@@ -3233,6 +3316,7 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
         const auto outputShape = InspectNativeTraceBuffers(outputData);
         Log(L"native trace P0 fill converter=" +
             std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
+            L" eventSeq=" + std::to_wstring(NextNativeTraceTimelineSequence()) +
             L" p0Call=" + std::to_wstring(p0TraceCall) +
             L" nonEmptyCall=" + std::to_wstring(p0NonEmptyCall) +
             L" inputProc=" + std::to_wstring(reinterpret_cast<std::uintptr_t>(inputProc)) +
@@ -3360,6 +3444,10 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
 
 AppleOSStatus __cdecl HookV2AudioConverterReset(void* converter) {
     if (ammod::ProcessExiting()) return g_v2OriginalAudioConverterReset ? g_v2OriginalAudioConverterReset(converter) : -1;
+    const bool nativeTrace = g_nativeTraceEnabled.load(std::memory_order_acquire);
+    const auto resetEnterQpc = nativeTrace ? CurrentQpc() : 0;
+    const auto resetCaller = nativeTrace
+        ? reinterpret_cast<std::uintptr_t>(_ReturnAddress()) : 0;
     const auto localQueue = FindV2LocalQueue(converter);
     bool localSeekReset{};
     if (localQueue) {
@@ -3378,17 +3466,26 @@ AppleOSStatus __cdecl HookV2AudioConverterReset(void* converter) {
              rva(resetStack[2]) == ammod::apple_private::agent_stack::kLocalSeekResetFrame2[1]);
     }
     const bool trackedP0 = g_nativeP0Puller.Tracks(converter);
+    const bool registeredP0Before = g_audioCoreRuntime.IsP0Converter(converter);
     if (trackedP0) g_nativeP0Puller.PauseForReset(converter);
     std::unique_lock<std::mutex> p0ResetLock;
     if (trackedP0) p0ResetLock = std::unique_lock<std::mutex>(g_p0FillMutex);
     const auto result = g_v2OriginalAudioConverterReset
         ? g_v2OriginalAudioConverterReset(converter) : -1;
     if (trackedP0 && result != 0) g_nativeP0Puller.ResumeAfterCursorProperty(converter);
-    if (g_nativeTraceEnabled.load(std::memory_order_acquire)) {
+    const auto resetReturnQpc = nativeTrace ? CurrentQpc() : 0;
+    if (nativeTrace &&
+        g_nativeTraceResetCalls.fetch_add(1, std::memory_order_relaxed) < 64) {
         Log(L"native trace AudioConverterReset converter=" +
             std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
-            L" result=" + std::to_wstring(result) + L" stack=" +
-            CaptureCurrentStackText(2, 8));
+            L" eventSeq=" + std::to_wstring(NextNativeTraceTimelineSequence()) +
+            L" trackedP0=" + std::to_wstring(trackedP0) +
+            L" registeredP0Before=" + std::to_wstring(registeredP0Before) +
+            L" caller=" + std::to_wstring(resetCaller) +
+            L" result=" + std::to_wstring(result) +
+            L" enterQpc=" + std::to_wstring(resetEnterQpc) +
+            L" returnQpc=" + std::to_wstring(resetReturnQpc) +
+            L" stack=" + CaptureCurrentStackText(2, 8));
     }
     if (result == 0 && g_audioCoreRuntime.UiEnabled()) {
         if (trackedP0) g_nativeP0Puller.ResetAfterNativeReset(converter);
@@ -3427,6 +3524,10 @@ AppleOSStatus __cdecl HookV2AudioConverterReset(void* converter) {
 
 AppleOSStatus __cdecl HookV2AudioConverterDispose(void* converter) {
     if (ammod::ProcessExiting()) return g_v2OriginalAudioConverterDispose ? g_v2OriginalAudioConverterDispose(converter) : -1;
+    const bool nativeTrace = g_nativeTraceEnabled.load(std::memory_order_acquire);
+    const auto disposeEnterQpc = nativeTrace ? CurrentQpc() : 0;
+    const auto disposeCaller = nativeTrace
+        ? reinterpret_cast<std::uintptr_t>(_ReturnAddress()) : 0;
     const auto localQueue = FindV2LocalQueue(converter);
     const bool uiEnabled = g_audioCoreRuntime.UiEnabled();
     const bool registeredBefore = uiEnabled && g_audioCoreRuntime.IsConverterRegistered(converter);
@@ -3453,11 +3554,16 @@ AppleOSStatus __cdecl HookV2AudioConverterDispose(void* converter) {
     if (trackedP0) p0DisposeLock = std::unique_lock<std::mutex>(g_p0FillMutex);
     const auto result = g_v2OriginalAudioConverterDispose
         ? g_v2OriginalAudioConverterDispose(converter) : -1;
-    if (g_nativeTraceEnabled.load(std::memory_order_acquire)) {
+    if (nativeTrace) {
         Log(L"native trace AudioConverterDispose converter=" +
             std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
-            L" result=" + std::to_wstring(result) + L" stack="+
-            CaptureCurrentStackText(2, 8));
+            L" eventSeq=" + std::to_wstring(NextNativeTraceTimelineSequence()) +
+            L" trackedP0=" + std::to_wstring(trackedP0) +
+            L" caller=" + std::to_wstring(disposeCaller) +
+            L" result=" + std::to_wstring(result) +
+            L" enterQpc=" + std::to_wstring(disposeEnterQpc) +
+            L" returnQpc=" + std::to_wstring(CurrentQpc()) +
+            L" stack=" + CaptureCurrentStackText(2, 8));
     }
     if (uiEnabled) g_audioCoreRuntime.OnConverterDisposed(converter);
     if (localQueue) {
