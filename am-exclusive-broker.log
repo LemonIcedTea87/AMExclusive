@@ -201,3 +201,22 @@
 2026-11-07T02:02:13.360 uptimeMs=13611078 pid=14068 tid=19744 async broadcast complete pid=28152 ok=1
 2026-11-07T02:02:15.523 uptimeMs=13613250 pid=14068 tid=19704 handle type=9 role=2
 2026-11-07T02:02:15.523 uptimeMs=13613250 pid=14068 tid=19704 role relay pid=13252 role=3 ok=1
+2026-11-07T02:03:16.955 uptimeMs=13674687 pid=14068 tid=20076 companion exit: bound AppleMusic host terminated pid=28152
+2026-11-07T02:03:16.989 uptimeMs=13674718 pid=14068 tid=27276 companion shutdown complete
+2026-11-07T02:03:18.016 uptimeMs=13675734 pid=19992 tid=5128 companion started pid=19992 persistedIntent=1 hardwareBufferMs=20 allowResampling=0
+2026-11-07T02:03:18.032 uptimeMs=13675750 pid=19992 tid=8748 companion bound to AppleMusic host pid=10284
+2026-11-07T02:03:18.041 uptimeMs=13675765 pid=19992 tid=8748 watcher UI injection pid=10284 ok=1
+2026-11-07T02:03:18.085 uptimeMs=13675812 pid=19992 tid=5128 accepted pipe client
+2026-11-07T02:03:18.085 uptimeMs=13675812 pid=19992 tid=14184 hello role=2 pid=10284
+2026-11-07T02:03:18.088 uptimeMs=13675812 pid=19992 tid=14184 write hello ack pid=10284
+2026-11-07T02:03:18.088 uptimeMs=13675812 pid=19992 tid=14184 hello complete pid=10284
+2026-11-07T02:03:19.056 uptimeMs=13676781 pid=19992 tid=5128 accepted pipe client
+2026-11-07T02:03:19.056 uptimeMs=13676781 pid=19992 tid=4092 hello role=3 pid=13252
+2026-11-07T02:03:19.056 uptimeMs=13676781 pid=19992 tid=4092 write hello ack pid=13252
+2026-11-07T02:03:19.056 uptimeMs=13676781 pid=19992 tid=4092 hello complete pid=13252
+2026-11-07T02:03:19.059 uptimeMs=13676781 pid=19992 tid=14816 async broadcast begin pid=10284
+2026-11-07T02:03:19.059 uptimeMs=13676781 pid=19992 tid=23772 async broadcast begin pid=13252
+2026-11-07T02:03:19.059 uptimeMs=13676781 pid=19992 tid=14816 async broadcast complete pid=10284 ok=1
+2026-11-07T02:03:19.059 uptimeMs=13676781 pid=19992 tid=23772 async broadcast complete pid=13252 ok=1
+2026-11-07T02:03:47.801 uptimeMs=13705531 pid=19992 tid=8748 companion exit: bound AppleMusic host terminated pid=10284
+2026-11-07T02:03:47.819 uptimeMs=13705546 pid=19992 tid=5128 companion shutdown complete
