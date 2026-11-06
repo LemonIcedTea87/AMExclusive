@@ -1205,10 +1205,17 @@ std::uint64_t NextNativeTraceTimelineSequence() noexcept {
 struct V2P1SignatureResult final {
     std::uint64_t signature{};
     std::uint64_t declaredBytes{};
+    std::uint64_t fullScanNonZeroBytes{};
+    std::uint64_t fullScanFirstNonZeroByteOffset{};
+    std::uint64_t fullScanLastNonZeroByteOffset{};
     std::uint32_t hashedBytes{};
     std::uint32_t zeroBytes{};
+    std::uint32_t fullScanFirstNonZeroBuffer{};
+    std::uint32_t fullScanLastNonZeroBuffer{};
     bool valid{};
     bool allZero{};
+    bool fullScanPerformed{};
+    bool fullScanHasNonZero{};
 };
 
 constexpr std::uint64_t kFnv1aOffset = 1469598103934665603ULL;
@@ -1521,9 +1528,11 @@ V2P0PcmSampleStats InspectV2P0PcmSamples(
     return stats;
 }
 
-V2P1SignatureResult ComputeV2P1Signature(const AppleAudioBufferList* list) noexcept {
+V2P1SignatureResult ComputeV2P1Signature(
+    const AppleAudioBufferList* list, bool fullScan) noexcept {
     V2P1SignatureResult result{};
     result.signature = kFnv1aOffset;
+    result.fullScanPerformed = fullScan;
     if (!list || list->mNumberBuffers == 0 || list->mNumberBuffers > 8) return result;
 
     result.valid = true;
@@ -1556,6 +1565,23 @@ V2P1SignatureResult ComputeV2P1Signature(const AppleAudioBufferList* list) noexc
             result.hashedBytes += static_cast<std::uint32_t>(tailBytes);
             for (std::size_t offset = 0; offset < tailBytes; ++offset) {
                 if (tail[offset] == 0) ++result.zeroBytes;
+            }
+        }
+
+        // Full-buffer inspection is restricted to the first few calls in an
+        // explicitly enabled native trace. Record counts and offsets only; no
+        // audio samples or payload bytes are retained or logged.
+        if (fullScan) {
+            for (std::size_t offset = 0; offset < buffer.mDataByteSize; ++offset) {
+                if (bytes[offset] == 0) continue;
+                ++result.fullScanNonZeroBytes;
+                if (!result.fullScanHasNonZero) {
+                    result.fullScanHasNonZero = true;
+                    result.fullScanFirstNonZeroBuffer = index;
+                    result.fullScanFirstNonZeroByteOffset = offset;
+                }
+                result.fullScanLastNonZeroBuffer = index;
+                result.fullScanLastNonZeroByteOffset = offset;
             }
         }
     }
@@ -3980,7 +4006,9 @@ AppleOSStatus __cdecl HookV2AudioUnitRender(void* unit, std::uint32_t* actionFla
             bufferBytes = list->mBuffers[0].mDataByteSize;
         }
         if (result == 0) {
-            signature = ComputeV2P1Signature(list);
+            // Full scan only the startup window; later render calls keep
+            // the existing low-cost edge sampling.
+            signature = ComputeV2P1Signature(list, call <= 12);
             signatureAttempted = true;
         }
     } else if (result == 0) {
@@ -4173,6 +4201,15 @@ AppleOSStatus __cdecl HookV2AudioUnitRender(void* unit, std::uint32_t* actionFla
             L" declaredBytes=" + std::to_wstring(signature.declaredBytes) +
             L" zeroBytes=" + std::to_wstring(signature.zeroBytes) +
             L" allZero=" + std::to_wstring(signatureAttempted && signature.allZero) +
+            L" fullScan=" + std::to_wstring(signature.fullScanPerformed) +
+            L" fullNonZeroBytes=" + std::to_wstring(signature.fullScanNonZeroBytes) +
+            L" fullHasNonZero=" + std::to_wstring(signature.fullScanHasNonZero) +
+            L" fullFirstNonZero=" + (signature.fullScanHasNonZero
+                ? std::to_wstring(signature.fullScanFirstNonZeroBuffer) + L":" +
+                  std::to_wstring(signature.fullScanFirstNonZeroByteOffset) : L"none") +
+            L" fullLastNonZero=" + (signature.fullScanHasNonZero
+                ? std::to_wstring(signature.fullScanLastNonZeroBuffer) + L":" +
+                  std::to_wstring(signature.fullScanLastNonZeroByteOffset) : L"none") +
             L" repeatedSignature=" + std::to_wstring(repeatedSignature) +
             L" repeatedTimestamp=" + std::to_wstring(repeatedTimestamp) +
             L" timestampDiscontinuity=" + std::to_wstring(timestampDiscontinuity) +
