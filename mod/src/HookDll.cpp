@@ -228,6 +228,7 @@ std::atomic<std::uint64_t> g_nativeTracePropertyCalls{};
 std::atomic<std::uint64_t> g_nativeTraceP0FillCalls{};
 std::atomic<std::uint64_t> g_nativeTraceP0NonEmptyCalls{};
 std::atomic<std::uint64_t> g_nativeTraceP0InputNonEmptyCalls{};
+std::atomic<std::uint64_t> g_nativeTraceP0CallbackStackCalls{};
 std::atomic<std::uint64_t> g_nativeTraceTimelineSequence{};
 std::atomic<std::uint64_t> g_nativeTraceResetCalls{};
 std::atomic<std::uint64_t> g_p0CursorDiagnosticCalls{};
@@ -3156,6 +3157,12 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
         const auto returned = packets ? *packets : 0u;
         const auto exit = CurrentQpc();
         ++trace->inputCalls;
+        const bool traceP0CallbackStack =
+            g_nativeTraceEnabled.load(std::memory_order_acquire) &&
+            trace->p0Candidate &&
+            g_nativeTraceP0CallbackStackCalls.fetch_add(1, std::memory_order_relaxed) < 4;
+        const auto callbackStack = traceP0CallbackStack
+            ? CaptureCurrentStackText(1, 8) : std::wstring{};
         trace->lastRequested = requested;
         trace->lastReturned = returned;
         trace->lastResult = result;
@@ -3219,6 +3226,10 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
                 L" eventSeq=" + std::to_wstring(NextNativeTraceTimelineSequence()) +
                 L" fillCall=" + std::to_wstring(trace->fillCall) +
                 L" inputCall=" + std::to_wstring(trace->inputCalls) +
+                L" inputProc=" +
+                std::to_wstring(reinterpret_cast<std::uintptr_t>(trace->original)) +
+                L" inputUserData=" +
+                std::to_wstring(reinterpret_cast<std::uintptr_t>(trace->userData)) +
                 L" inputConverter=" +
                 std::to_wstring(reinterpret_cast<std::uintptr_t>(inputConverter)) +
                 L" requestedPackets=" + std::to_wstring(requested) +
@@ -3234,7 +3245,8 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
                 L" firstPacketBytes=" + std::to_wstring(trace->lastPackets.firstBytes) +
                 L" result=" + std::to_wstring(result) +
                 L" enterQpc=" + std::to_wstring(enter) +
-                L" returnQpc=" + std::to_wstring(exit));
+                L" returnQpc=" + std::to_wstring(exit) +
+                L" callbackStack=" + callbackStack);
         }
         return result;
     };

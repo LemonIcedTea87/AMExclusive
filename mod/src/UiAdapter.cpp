@@ -93,6 +93,7 @@ thread_local std::vector<ObserverRef> g_scrubberThumbObservers;
 thread_local std::vector<ObserverRef> g_transportPopupObservers;
 thread_local std::vector<WindowObserverRef> g_transportWindowObservers;
 thread_local std::uintptr_t g_lastTrackRowPressIdentity{};
+std::atomic<std::uint64_t> g_uiPointerTraceCalls{};
 thread_local std::uint64_t g_lastTrackRowPressEpoch{};
 thread_local ULONGLONG g_lastTrackRowPressTick{};
 HWINEVENTHOOK g_windowLifecycleHook{};
@@ -415,6 +416,45 @@ Xaml::DependencyObject FindByAutomationId(const Xaml::DependencyObject& node,
     } catch (...) {
     }
     return nullptr;
+}
+
+std::wstring UiTraceNodeDescription(const Xaml::DependencyObject& node) {
+    if (!node) return L"<null>";
+    std::wstring description;
+    try {
+        description = get_class_name(node).c_str();
+    } catch (...) {
+        description = L"<unknown>";
+    }
+    try {
+        if (auto element = node.try_as<Xaml::FrameworkElement>()) {
+            const std::wstring name = element.Name().c_str();
+            if (!name.empty()) description += L"[name=" + name + L"]";
+        }
+    } catch (...) {
+    }
+    try {
+        const std::wstring automationId =
+            Automation::AutomationProperties::GetAutomationId(node).c_str();
+        if (!automationId.empty()) description += L"[automationId=" + automationId + L"]";
+    } catch (...) {
+    }
+    if (description.size() > 112) description.resize(112);
+    return description;
+}
+
+std::wstring UiTraceAncestorChain(Xaml::DependencyObject node) {
+    std::wstring chain;
+    for (unsigned depth = 0; node && depth < 8; ++depth) {
+        if (!chain.empty()) chain += L" <- ";
+        chain += UiTraceNodeDescription(node);
+        try {
+            node = Media::VisualTreeHelper::GetParent(node);
+        } catch (...) {
+            break;
+        }
+    }
+    return chain;
 }
 
 void AppendUniqueNode(std::vector<Xaml::DependencyObject>& nodes,
@@ -1498,9 +1538,17 @@ void AttachTransportObservers(const Xaml::Window& window, const std::wstring& wi
                 pointerRoot.AddHandler(
                     Xaml::UIElement::PointerPressedEvent(),
                     box_value(Input::PointerEventHandler(
-                        [](auto&&, Input::PointerRoutedEventArgs const& args) {
+                        [windowProperty](auto&&, Input::PointerRoutedEventArgs const& args) {
                             ScheduleTransportObserverAttach();
                             auto current = args.OriginalSource().try_as<Xaml::DependencyObject>();
+                            const auto traceCall =
+                                g_uiPointerTraceCalls.fetch_add(1, std::memory_order_relaxed) + 1;
+                            if (traceCall <= 96) {
+                                Log(L"ui trace pointer press window=" + windowProperty +
+                                    L" traceCall=" + std::to_wstring(traceCall) +
+                                    L" sourceChain=" + UiTraceAncestorChain(current) +
+                                    L" qpc=" + std::to_wstring(TransportQpc()));
+                            }
                             for (unsigned depth = 0; current && depth < 16; ++depth) {
                                 if (auto row = current.try_as<Controls::ListViewItem>()) {
                                     const auto rowIdentity = DependencyObjectIdentity(row);
