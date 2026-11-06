@@ -225,10 +225,6 @@ std::atomic<bool> g_audioCoreV2HooksInstalled{};
 std::atomic<bool> g_nativeTraceEnabled{};
 std::atomic<std::uint64_t> g_nativeTraceFillCalls{};
 std::atomic<std::uint64_t> g_nativeTracePropertyCalls{};
-std::atomic<std::uint64_t> g_nativeTraceP0FillCalls{};
-std::atomic<std::uint64_t> g_nativeTraceP0NonEmptyCalls{};
-std::atomic<std::uint64_t> g_nativeTraceP0InputNonEmptyCalls{};
-std::atomic<std::uint64_t> g_nativeTraceP0CallbackStackCalls{};
 std::atomic<std::uint64_t> g_nativeTraceTimelineSequence{};
 std::atomic<std::uint64_t> g_nativeTraceResetCalls{};
 std::atomic<std::uint64_t> g_p0CursorDiagnosticCalls{};
@@ -900,6 +896,10 @@ std::array<V2P1SignatureSlot, 32> g_v2P1SignatureSlots{};
 struct V2P0PcmTraceSlot final {
     std::atomic<std::uintptr_t> converter{};
     std::atomic<std::uint64_t> nonEmptyCalls{};
+    std::atomic<std::uint64_t> fillCalls{};
+    std::atomic<std::uint64_t> nonEmptyFillCalls{};
+    std::atomic<std::uint64_t> inputPayloadCalls{};
+    std::atomic<std::uint64_t> callbackStackCalls{};
 };
 std::array<V2P0PcmTraceSlot, 32> g_v2P0PcmTraceSlots{};
 
@@ -1298,6 +1298,10 @@ V2P0PcmTraceSlot* FindV2P0PcmTraceSlot(void* converter) noexcept {
             slot.converter.compare_exchange_strong(observed, key,
                 std::memory_order_acq_rel, std::memory_order_acquire)) {
             slot.nonEmptyCalls.store(0, std::memory_order_release);
+            slot.fillCalls.store(0, std::memory_order_release);
+            slot.nonEmptyFillCalls.store(0, std::memory_order_release);
+            slot.inputPayloadCalls.store(0, std::memory_order_release);
+            slot.callbackStackCalls.store(0, std::memory_order_release);
             return &slot;
         }
     }
@@ -3115,10 +3119,12 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
     }
     const bool nativeTrace = g_nativeTraceEnabled.load(std::memory_order_acquire);
     const auto localQueue = FindV2LocalQueue(converter);
+    auto* p0TraceSlot = nativeTrace && p0Candidate
+        ? FindV2P0PcmTraceSlot(converter) : nullptr;
     const auto traceCall = nativeTrace
         ? g_nativeTraceFillCalls.fetch_add(1, std::memory_order_relaxed) + 1 : 0;
-    const auto p0TraceCall = nativeTrace && p0Candidate
-        ? g_nativeTraceP0FillCalls.fetch_add(1, std::memory_order_relaxed) + 1 : 0;
+    const auto p0TraceCall = p0TraceSlot
+        ? p0TraceSlot->fillCalls.fetch_add(1, std::memory_order_relaxed) + 1 : 0;
     const auto requestedPackets = outputPackets ? *outputPackets : 0u;
     const auto resumeTraceConverter = g_resumeP0TraceConverter.load(std::memory_order_acquire);
     const auto resumeTraceUntil = g_resumeP0TraceUntilTick.load(std::memory_order_acquire);
@@ -3150,16 +3156,20 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
         std::int64_t lastEnterQpc{};
         std::int64_t lastReturnQpc{};
         std::shared_ptr<LocalPcmQueue> localQueue;
-    } inputContext{inputProc, inputUserData, converter, traceCall, 0, p0Candidate,
-                   {}, {}, {}, 0, 0, 0, 0, 0, localQueue};
+        V2P0PcmTraceSlot* p0TraceSlot{};
+    } inputContext{inputProc, inputUserData, converter,
+                   p0Candidate ? p0TraceCall : traceCall, 0, p0Candidate,
+                   {}, {}, {}, 0, 0, 0, 0, 0, localQueue, p0TraceSlot};
     const auto proxyInput = +[](void* inputConverter, std::uint32_t* packets, void* data,
                                 void** descriptions, void* context) -> AppleOSStatus {
         auto* trace = static_cast<NativeInputTraceContext*>(context);
         const auto requested = packets ? *packets : 0u;
         const auto enter = CurrentQpc();
         const auto callbackStackIndex =
-            g_nativeTraceEnabled.load(std::memory_order_acquire) && trace->p0Candidate
-                ? g_nativeTraceP0CallbackStackCalls.fetch_add(1, std::memory_order_relaxed) + 1
+            g_nativeTraceEnabled.load(std::memory_order_acquire) &&
+                    trace->p0Candidate && trace->p0TraceSlot
+                ? trace->p0TraceSlot->callbackStackCalls.fetch_add(
+                      1, std::memory_order_relaxed) + 1
                 : 0;
         const bool traceP0CallbackStack =
             callbackStackIndex != 0 && callbackStackIndex <= 4;
@@ -3179,10 +3189,15 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
         trace->lastReturnQpc = exit;
         trace->lastBuffers = InspectNativeTraceBuffers(data);
         trace->lastPackets = InspectNativeTraceInputPackets(descriptions, returned);
-        const bool traceP0InputPayload =
+        const auto payloadCallIndex =
             g_nativeTraceEnabled.load(std::memory_order_acquire) &&
-            trace->p0Candidate && result == 0 && returned != 0 &&
-            g_nativeTraceP0InputNonEmptyCalls.fetch_add(1, std::memory_order_relaxed) < 16;
+                    trace->p0Candidate && trace->p0TraceSlot &&
+                    result == 0 && returned != 0
+                ? trace->p0TraceSlot->inputPayloadCalls.fetch_add(
+                      1, std::memory_order_relaxed) + 1
+                : 0;
+        const bool traceP0InputPayload =
+            payloadCallIndex != 0 && payloadCallIndex <= 16;
         if (traceP0InputPayload) {
             trace->lastPayload = InspectNativeTracePayload(data);
         }
@@ -3227,6 +3242,7 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
                 L" eventSeq=" + std::to_wstring(NextNativeTraceTimelineSequence()) +
                 L" fillCall=" + std::to_wstring(trace->fillCall) +
                 L" inputCall=" + std::to_wstring(trace->inputCalls) +
+                L" payloadCall=" + std::to_wstring(payloadCallIndex) +
                 L" requestedPackets=" + std::to_wstring(requested) +
                 L" returnedPackets=" + std::to_wstring(returned) +
                 L" buffers=" + std::to_wstring(trace->lastPayload.bufferCount) +
@@ -3288,8 +3304,10 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
             wrapInput ? static_cast<void*>(&inputContext) : inputUserData,
             outputPackets, outputData, packetDescriptions) : -1;
     const auto producedPackets = outputPackets ? *outputPackets : 0u;
-    const auto p0NonEmptyCall = nativeTrace && p0Candidate && producedPackets != 0
-        ? g_nativeTraceP0NonEmptyCalls.fetch_add(1, std::memory_order_relaxed) + 1 : 0;
+    const auto p0NonEmptyCall =
+        p0TraceSlot && producedPackets != 0
+            ? p0TraceSlot->nonEmptyFillCalls.fetch_add(1, std::memory_order_relaxed) + 1
+            : 0;
     const auto fillReturnQpc = (nativeTrace && p0Candidate) ? CurrentQpc() : 0;
     if (p0Candidate) {
         // Capture the real callback/user-data pair even when this particular
@@ -3298,7 +3316,7 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
         g_nativeP0Puller.ObserveNativeFill(converter, inputProc, inputUserData, requestedPackets);
     }
     if (nativeTrace && p0Candidate && producedPackets != 0 && outputData) {
-        if (auto* sampleSlot = FindV2P0PcmTraceSlot(converter)) {
+        if (auto* sampleSlot = p0TraceSlot) {
             const auto sampleCall =
                 sampleSlot->nonEmptyCalls.fetch_add(1, std::memory_order_relaxed) + 1;
             if (sampleCall <= 8) {

@@ -85,6 +85,7 @@ thread_local ULONGLONG g_lastPlayPausePointerTick{};
 std::deque<Message> g_transportPending;
 // Weak XAML controls must only be resolved on their owning UI thread.
 thread_local std::vector<ObserverRef> g_transportButtonObservers;
+thread_local std::vector<ObserverRef> g_transportButtonTraceObservers;
 thread_local std::vector<ObserverRef> g_skipBackObservers;
 thread_local std::vector<ObserverRef> g_skipForwardObservers;
 thread_local std::vector<ObserverRef> g_trackListPointerRootObservers;
@@ -496,6 +497,19 @@ void CollectByAutomationId(const Xaml::DependencyObject& node,
         for (int index = 0; index < count; ++index) {
             CollectByAutomationId(Media::VisualTreeHelper::GetChild(node, index),
                                   automationId, matches);
+        }
+    } catch (...) {
+    }
+}
+
+void CollectTransportButtons(const Xaml::DependencyObject& node,
+                              std::vector<Xaml::DependencyObject>& matches) {
+    if (!node || matches.size() >= 32) return;
+    try {
+        if (node.try_as<Primitives::ButtonBase>()) AppendUniqueNode(matches, node);
+        const int count = Media::VisualTreeHelper::GetChildrenCount(node);
+        for (int index = 0; index < count && matches.size() < 32; ++index) {
+            CollectTransportButtons(Media::VisualTreeHelper::GetChild(node, index), matches);
         }
     } catch (...) {
     }
@@ -1530,6 +1544,40 @@ void AttachTransportObservers(const Xaml::Window& window, const std::wstring& wi
             auto content = window.Content().try_as<Xaml::DependencyObject>();
             if (!content) return;
             AttachTransportWindowLifecycle(window);
+
+            // Trace actual transport ButtonBase targets separately from the
+            // root pointer event. The root sometimes reports only TransportBar,
+            // which cannot distinguish Previous/Next from an empty-area click.
+            auto transportBar = FindByName(content, L"TransportBar");
+            if (transportBar) {
+                std::vector<Xaml::DependencyObject> transportButtons;
+                CollectTransportButtons(transportBar, transportButtons);
+                for (const auto& node : transportButtons) {
+                    auto button = node.try_as<Primitives::ButtonBase>();
+                    if (!button || !RememberObserver(g_transportButtonTraceObservers, button))
+                        continue;
+                    const auto description = UiTraceNodeDescription(node);
+                    Log(L"ui trace transport button discovered window=" + windowProperty +
+                        L" control=" + description);
+                    button.AddHandler(
+                        Xaml::UIElement::PointerPressedEvent(),
+                        box_value(Input::PointerEventHandler(
+                            [windowProperty, description](
+                                auto&&, Input::PointerRoutedEventArgs const& args) {
+                                auto source = args.OriginalSource()
+                                    .try_as<Xaml::DependencyObject>();
+                                Log(L"ui trace transport button pointer window=" + windowProperty +
+                                    L" control=" + description +
+                                    L" source=" + UiTraceNodeDescription(source) +
+                                    L" qpc=" + std::to_wstring(TransportQpc()));
+                            })), true);
+                    button.Click([windowProperty, description](auto&&, auto&&) {
+                        Log(L"ui trace transport button click window=" + windowProperty +
+                            L" control=" + description +
+                            L" qpc=" + std::to_wstring(TransportQpc()));
+                    });
+                }
+            }
 
             // Preserve the original MainWindow direct-selection behavior while
             // broadening discovery to every live transport presentation.
