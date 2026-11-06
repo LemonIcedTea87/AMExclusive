@@ -900,6 +900,7 @@ struct V2P0PcmTraceSlot final {
     std::atomic<std::uint64_t> nonEmptyFillCalls{};
     std::atomic<std::uint64_t> inputPayloadCalls{};
     std::atomic<std::uint64_t> callbackStackCalls{};
+    std::atomic<std::uint64_t> traceEpoch{};
 };
 std::array<V2P0PcmTraceSlot, 32> g_v2P0PcmTraceSlots{};
 
@@ -1302,10 +1303,24 @@ V2P0PcmTraceSlot* FindV2P0PcmTraceSlot(void* converter) noexcept {
             slot.nonEmptyFillCalls.store(0, std::memory_order_release);
             slot.inputPayloadCalls.store(0, std::memory_order_release);
             slot.callbackStackCalls.store(0, std::memory_order_release);
+            slot.traceEpoch.store(0, std::memory_order_release);
             return &slot;
         }
     }
     return nullptr;
+}
+
+std::uint64_t ResetV2P0TraceWindow(void* converter) noexcept {
+    auto* slot = FindV2P0PcmTraceSlot(converter);
+    if (!slot) return 0;
+    // A successful cursor set/reset starts a new source-read window. Reset
+    // only diagnostic budgets; never touch Apple's converter or its queues.
+    slot->nonEmptyCalls.store(0, std::memory_order_release);
+    slot->fillCalls.store(0, std::memory_order_release);
+    slot->nonEmptyFillCalls.store(0, std::memory_order_release);
+    slot->inputPayloadCalls.store(0, std::memory_order_release);
+    slot->callbackStackCalls.store(0, std::memory_order_release);
+    return slot->traceEpoch.fetch_add(1, std::memory_order_acq_rel) + 1;
 }
 
 V2P0PcmSampleStats InspectV2P0PcmSamplesUnchecked(
@@ -2850,6 +2865,15 @@ AppleOSStatus __cdecl HookV2AudioConverterSetProperty(void* converter,
     if (serializedCursorUpdate && result == 0) {
         g_nativeP0Puller.ResumeAfterCursorProperty(converter);
     }
+    const auto p0TraceEpoch = nativeTrace && cursorProperty && result == 0 &&
+            g_audioCoreRuntime.IsP0Converter(converter)
+        ? ResetV2P0TraceWindow(converter) : 0;
+    if (p0TraceEpoch != 0) {
+        Log(L"native trace P0 source epoch converter=" +
+            std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
+            L" trigger=cursor-set epoch=" + std::to_wstring(p0TraceEpoch) +
+            L" qpc=" + std::to_wstring(propertyQpcReturn));
+    }
     if (nativeTrace &&
         g_nativeTracePropertyCalls.fetch_add(1, std::memory_order_relaxed) < 256) {
         Log(L"native trace AudioConverterSetProperty converter=" +
@@ -3229,6 +3253,9 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
                     std::to_wstring(reinterpret_cast<std::uintptr_t>(trace->userData)) +
                 L" inputConverter=" +
                     std::to_wstring(reinterpret_cast<std::uintptr_t>(inputConverter)) +
+                L" traceEpoch=" + std::to_wstring(
+                    trace->p0TraceSlot
+                        ? trace->p0TraceSlot->traceEpoch.load(std::memory_order_acquire) : 0) +
                 L" requestedPackets=" + std::to_wstring(requested) +
                 L" returnedPackets=" + std::to_wstring(returned) +
                 L" result=" + std::to_wstring(result) +
@@ -3243,6 +3270,9 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
                 L" fillCall=" + std::to_wstring(trace->fillCall) +
                 L" inputCall=" + std::to_wstring(trace->inputCalls) +
                 L" payloadCall=" + std::to_wstring(payloadCallIndex) +
+                L" traceEpoch=" + std::to_wstring(
+                    trace->p0TraceSlot
+                        ? trace->p0TraceSlot->traceEpoch.load(std::memory_order_acquire) : 0) +
                 L" requestedPackets=" + std::to_wstring(requested) +
                 L" returnedPackets=" + std::to_wstring(returned) +
                 L" buffers=" + std::to_wstring(trace->lastPayload.bufferCount) +
@@ -3376,6 +3406,9 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
             std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
             L" eventSeq=" + std::to_wstring(NextNativeTraceTimelineSequence()) +
             L" p0Call=" + std::to_wstring(p0TraceCall) +
+            L" traceEpoch=" + std::to_wstring(
+                p0TraceSlot
+                    ? p0TraceSlot->traceEpoch.load(std::memory_order_acquire) : 0) +
             L" nonEmptyCall=" + std::to_wstring(p0NonEmptyCall) +
             L" inputProc=" + std::to_wstring(reinterpret_cast<std::uintptr_t>(inputProc)) +
             L" inputUserData=" + std::to_wstring(reinterpret_cast<std::uintptr_t>(inputUserData)) +
@@ -3535,6 +3568,15 @@ AppleOSStatus __cdecl HookV2AudioConverterReset(void* converter) {
         ? g_v2OriginalAudioConverterReset(converter) : -1;
     if (trackedP0 && result != 0) g_nativeP0Puller.ResumeAfterCursorProperty(converter);
     const auto resetReturnQpc = nativeTrace ? CurrentQpc() : 0;
+    const auto p0TraceEpoch = nativeTrace && result == 0 &&
+            (trackedP0 || registeredP0Before)
+        ? ResetV2P0TraceWindow(converter) : 0;
+    if (p0TraceEpoch != 0) {
+        Log(L"native trace P0 source epoch converter=" +
+            std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
+            L" trigger=AudioConverterReset epoch=" + std::to_wstring(p0TraceEpoch) +
+            L" qpc=" + std::to_wstring(resetReturnQpc));
+    }
     if (nativeTrace &&
         g_nativeTraceResetCalls.fetch_add(1, std::memory_order_relaxed) < 64) {
         Log(L"native trace AudioConverterReset converter=" +
