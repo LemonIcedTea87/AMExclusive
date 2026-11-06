@@ -1208,18 +1208,20 @@ void AudioCoreRuntime::OnAudioUnitInputFormatUpdated(
     std::uint32_t sourceBitDepth, std::uint64_t observationId) noexcept {
     if (!UiEnabled() || !unit || sampleRate < 8000 || sampleRate > 768000 ||
         channels != 2 || sourceBitDepth > UINT16_MAX ||
-        !IsSupportedSourceDepth(static_cast<std::uint16_t>(sourceBitDepth))) {
+        (sourceBitDepth != 0 &&
+         !IsSupportedSourceDepth(static_cast<std::uint16_t>(sourceBitDepth)))) {
         return;
     }
 
     ControlScope lock(*this);
     ExtendSeekQuietPeriodLocked();
+    if (!graphUnit_ || graphChannels_ != channels) return;
+
     // A delayed property notification from a retired AudioUnit must never
     // retarget the currently selected graph. The same live AudioUnit can,
     // however, receive a new stream format in place when Apple switches the
     // selected media item. Accept a rate change only with a newer, exact
     // observation so stale format notifications cannot roll the graph back.
-    if (graphUnit_ != unit || graphChannels_ != channels) return;
     const bool graphRateChanged = graphRate_ != sampleRate;
     if ((observationId != 0 && graphObservationId_ != 0 &&
          observationId < graphObservationId_) ||
@@ -1228,24 +1230,109 @@ void AudioCoreRuntime::OnAudioUnitInputFormatUpdated(
         return;
     }
 
+    // ALAC's AudioUnit input-format property can arrive after the decoder
+    // cookie has supplied precision. In that case the property itself carries
+    // sourceBitDepth=0, while the exact observation already identifies the
+    // cookie-pinned P0 registration. Resolve that registration by observation
+    // instead of discarding the format update at the hook boundary.
     void* candidateConverter = nullptr;
-    (void)registry_.FindCandidate(sampleRate, channels, sourceBitDepth,
-                                  observationId, candidateConverter);
-    // A changed rate must resolve to the converter registered for that exact
-    // observation. Do not switch the graph to an unconfirmed format tuple.
-    if (graphRateChanged && (!candidateConverter || observationId == 0)) return;
+    auto resolvedSourceBitDepth = sourceBitDepth;
+    if (resolvedSourceBitDepth == 0) {
+        if (observationId == 0 ||
+            !registry_.FindCandidateAnyPrecision(
+                sampleRate, channels, observationId,
+                candidateConverter, resolvedSourceBitDepth)) {
+            return;
+        }
+        Log(L"v2 graph input format precision resolved from exact P0 observation unit=" +
+            std::to_wstring(reinterpret_cast<std::uintptr_t>(unit)) +
+            L" converter=" +
+            std::to_wstring(reinterpret_cast<std::uintptr_t>(candidateConverter)) +
+            L" rate=" + std::to_wstring(sampleRate) +
+            L" bits=" + std::to_wstring(resolvedSourceBitDepth) +
+            L" observation=" + std::to_wstring(observationId));
+    } else {
+        (void)registry_.FindCandidate(sampleRate, channels, resolvedSourceBitDepth,
+                                      observationId, candidateConverter);
+    }
+
     const auto pendingDeferred =
         pendingDeferredConverter_.load(std::memory_order_acquire);
-    const bool provisionalCapturePendingForUnit = provisionalCaptureConverter_ &&
-        provisionalCaptureUnit_ == unit && pendingCaptureOwner_ &&
+    const bool provisionalCapturePending =
+        provisionalCaptureConverter_ &&
+        provisionalCaptureUnit_ == graphUnit_ &&
+        pendingCaptureOwner_ &&
         pendingCaptureOwner_->converter == provisionalCaptureConverter_ &&
         pendingCaptureOwner_->registrationId == provisionalCaptureRegistrationId_ &&
-        pendingDeferred == provisionalCaptureConverter_ &&
-        sampleRate == graphRate_ && channels == graphChannels_;
+        pendingDeferred == provisionalCaptureConverter_;
+
+    bool provisionalUnitRetarget = false;
+    if (graphUnit_ != unit) {
+        // During delayed ALAC setup Apple can initialize/start the parent
+        // output graph before publishing the decoder's exact input-format
+        // property. The property may be applied to a newly-created child
+        // AudioUnit rather than the unresolved unit first observed at init.
+        // Retarget only when that new unit confirms the exact converter and
+        // registration already held by the provisional capture; all ordinary
+        // foreign/stale AudioUnit notifications remain rejected.
+        ConverterRegistrationSnapshot provisionalSnapshot{};
+        const auto now = GetTickCount64();
+        const bool exactPendingCandidate =
+            provisionalCapturePending &&
+            candidateConverter == provisionalCaptureConverter_ &&
+            observationId != 0 &&
+            registry_.Snapshot(candidateConverter, provisionalSnapshot) &&
+            provisionalSnapshot.registrationId == provisionalCaptureRegistrationId_ &&
+            provisionalSnapshot.registration.observationId == observationId &&
+            provisionalSnapshot.registration.outputFormat.sampleRate == sampleRate &&
+            provisionalSnapshot.registration.outputFormat.channels == channels &&
+            provisionalSnapshot.registration.sourceBitDepth == resolvedSourceBitDepth &&
+            IsSupportedSourceDepth(static_cast<std::uint16_t>(resolvedSourceBitDepth)) &&
+            (graphObservationId_ == 0 || graphObservationId_ == observationId);
+        const bool unresolvedStartedGraph =
+            !graphBound_ &&
+            coordinator_.Phase() == AudioCoreGatePhase::Off &&
+            !graphConverter_ &&
+            graphSourceBits_ == 0 &&
+            graphRate_ == sampleRate &&
+            graphChannels_ == channels &&
+            graphStarted_ &&
+            graphOutputUnit_ != nullptr &&
+            !pendingGraphBind_.converter &&
+            !endOfStreamDrainPending_ &&
+            !streamingProducerDrainPending_ &&
+            !seekFence_ &&
+            graphInitializedTick_ != 0 &&
+            now >= graphInitializedTick_ &&
+            now - graphInitializedTick_ <= 2000;
+        if (!exactPendingCandidate || !unresolvedStartedGraph) return;
+
+        provisionalUnitRetarget = true;
+        Log(L"v2 provisional P0 input format adopted as graph unit old=" +
+            std::to_wstring(reinterpret_cast<std::uintptr_t>(graphUnit_)) +
+            L" new=" + std::to_wstring(reinterpret_cast<std::uintptr_t>(unit)) +
+            L" converter=" +
+            std::to_wstring(reinterpret_cast<std::uintptr_t>(candidateConverter)) +
+            L" observation=" + std::to_wstring(observationId));
+    }
+
+    // A changed rate must resolve to the converter for that exact observation.
+    // Do not switch the graph to an unconfirmed format tuple.
+    if (graphRateChanged && (!candidateConverter || observationId == 0)) return;
+
+    if (provisionalUnitRetarget) {
+        // Keep graphStarted_ and graphOutputUnit_: the parent output unit was
+        // already started for this unresolved graph. Only the child identity
+        // is being replaced by the exact P0-bearing AudioUnit.
+        graphUnit_ = unit;
+    }
+
+    const bool provisionalCapturePendingForUnit =
+        provisionalCapturePending && provisionalCaptureUnit_ == unit;
     const bool unresolvedProvisionalForUnit =
         provisionalCapturePendingForUnit && candidateConverter == nullptr;
     const bool graphFormatChanged =
-        graphRateChanged || graphSourceBits_ != sourceBitDepth;
+        graphRateChanged || graphSourceBits_ != resolvedSourceBitDepth;
     const bool graphIdentityChanged =
         graphConverter_ != candidateConverter || graphFormatChanged;
     if (graphIdentityChanged) {
@@ -1265,7 +1352,7 @@ void AudioCoreRuntime::OnAudioUnitInputFormatUpdated(
     graphConverter_ = candidateConverter;
     graphRate_ = sampleRate;
     graphChannels_ = channels;
-    graphSourceBits_ = sourceBitDepth;
+    graphSourceBits_ = resolvedSourceBitDepth;
     graphObservationId_ = observationId;
     if (candidateConverter && observationId != 0 &&
         candidateConverter == provisionalCaptureConverter_) {
@@ -1283,7 +1370,6 @@ void AudioCoreRuntime::OnAudioUnitInputFormatUpdated(
     TryBindGraphLocked();
     Wake();
 }
-
 void AudioCoreRuntime::OnAudioUnitStarted(void* unit) noexcept {
     if (!UiEnabled()) return;
     ControlScope lock(*this);
