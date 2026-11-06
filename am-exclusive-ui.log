@@ -1,40 +1,44 @@
-2026-11-06T21:41:55.548 pid=23688 tid=25096 UI adapter loaded
-2026-11-06T21:41:55.548 pid=23688 tid=25096 UI window lifecycle WinEvent hook=1112671839
-2026-11-06T21:41:55.548 pid=23688 tid=12320 UI broker IPC connected
-2026-11-06T21:41:56.508 pid=23688 tid=18444 UI dispatcher bound window=MainWindow
-2026-11-06T21:41:56.509 pid=23688 tid=18444 Apple player observation failed stage=Player::PlayerState IPlayer QueryInterface hr=0x80004002
-2026-11-06T21:41:56.529 pid=23688 tid=18444 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=206 hosts=9 maxRefreshMs=16
-2026-11-06T21:46:45.441 pid=6972 tid=26220 UI adapter loaded
-2026-11-06T21:46:45.443 pid=6972 tid=26220 UI window lifecycle WinEvent hook=18482607
-2026-11-06T21:46:45.443 pid=6972 tid=14252 UI broker IPC connected
-2026-11-06T21:46:46.025 pid=6972 tid=9748 UI dispatcher bound window=MainWindow
-2026-11-06T21:46:46.027 pid=6972 tid=9748 Apple player observation failed stage=Player::PlayerState IPlayer QueryInterface hr=0x80004002
-2026-11-06T21:46:46.041 pid=6972 tid=9748 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=206 hosts=9 maxRefreshMs=16
-2026-11-06T21:46:51.820 pid=6972 tid=9748 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=254 hosts=11 maxRefreshMs=15
-2026-11-06T21:46:57.273 pid=6972 tid=9748 UI work window=MainWindow refreshes=14 routeScans=14 transportScans=14 routeNodes=254 hosts=11 maxRefreshMs=47
-2026-11-06T21:47:04.307 pid=6972 tid=9748 UI work window=MainWindow refreshes=6 routeScans=5 transportScans=6 routeNodes=299 hosts=11 maxRefreshMs=63
-2026-11-06T21:47:10.517 pid=6972 tid=9748 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=299 hosts=11 maxRefreshMs=47
-2026-11-06T21:47:15.516 pid=6972 tid=9748 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=299 hosts=11 maxRefreshMs=47
-2026-11-06T21:47:25.518 pid=6972 tid=9748 UI work window=MainWindow refreshes=2 routeScans=2 transportScans=2 routeNodes=299 hosts=11 maxRefreshMs=47
-2026-11-06T21:47:27.753 pid=19844 tid=22308 UI adapter loaded
-2026-11-06T21:47:27.753 pid=19844 tid=22308 UI window lifecycle WinEvent hook=1115621
-2026-11-06T21:47:27.755 pid=19844 tid=22308 GetAppProperty(MainWindow) failed hr=0x8000000b
-2026-11-06T21:47:27.755 pid=19844 tid=24480 UI broker IPC connected
-2026-11-06T21:47:27.807 pid=19844 tid=22308 GetAppProperty(MainWindow) failed hr=0x8000000b
-2026-11-06T21:47:27.810 pid=19844 tid=22308 GetAppProperty(MainWindow) failed hr=0x8000000b
-2026-11-06T21:47:27.813 pid=19844 tid=22308 GetAppProperty(MainWindow) failed hr=0x8000000b
-2026-11-06T21:47:27.814 pid=19844 tid=22308 GetAppProperty(MainWindow) failed hr=0x8000000b
-2026-11-06T21:47:27.814 pid=19844 tid=22308 GetAppProperty(MainWindow) failed hr=0x8000000b
-2026-11-06T21:47:27.825 pid=19844 tid=22308 GetAppProperty(MainWindow) failed hr=0x8000000b
-2026-11-06T21:47:28.889 pid=19844 tid=5276 UI dispatcher bound window=MainWindow
-2026-11-06T21:47:28.892 pid=19844 tid=5276 Apple player observation failed stage=Player::PlayerState IPlayer QueryInterface hr=0x80004002
-2026-11-06T21:47:28.912 pid=19844 tid=5276 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=206 hosts=9 maxRefreshMs=31
-2026-11-06T21:47:34.884 pid=19844 tid=5276 UI work window=MainWindow refreshes=6 routeScans=2 transportScans=2 routeNodes=244 hosts=9 maxRefreshMs=63
-2026-11-06T21:47:40.377 pid=19844 tid=5276 UI work window=MainWindow refreshes=11 routeScans=10 transportScans=11 routeNodes=249 hosts=10 maxRefreshMs=63
-2026-11-06T21:47:45.390 pid=19844 tid=5276 UI work window=MainWindow refreshes=26 routeScans=26 transportScans=26 routeNodes=252 hosts=10 maxRefreshMs=63
-2026-11-06T21:47:52.897 pid=19844 tid=5276 UI work window=MainWindow refreshes=5 routeScans=5 transportScans=5 routeNodes=296 hosts=10 maxRefreshMs=110
-2026-11-06T21:47:57.902 pid=19844 tid=5276 UI work window=MainWindow refreshes=3 routeScans=3 transportScans=3 routeNodes=297 hosts=10 maxRefreshMs=109
-2026-11-06T21:48:02.906 pid=19844 tid=5276 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=109
-2026-11-06T21:48:07.903 pid=19844 tid=5276 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=109
-2026-11-06T21:48:12.908 pid=19844 tid=5276 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=109
-2026-11-06T21:48:17.813 pid=19844 tid=22308 GetAppProperty(MainWindow) failed hr=0x8000000b
+2026-11-06T22:22:41.906 pid=6660 tid=8964 UI adapter loaded
+2026-11-06T22:22:41.907 pid=6660 tid=8964 UI window lifecycle WinEvent hook=131907
+2026-11-06T22:22:41.907 pid=6660 tid=4968 UI broker IPC connected
+2026-11-06T22:22:42.604 pid=6660 tid=9616 UI dispatcher bound window=MainWindow
+2026-11-06T22:22:42.607 pid=6660 tid=9616 Apple player observation failed stage=Player::PlayerState IPlayer QueryInterface hr=0x80004002
+2026-11-06T22:22:42.622 pid=6660 tid=9616 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=206 hosts=9 maxRefreshMs=15
+2026-11-06T22:22:48.270 pid=6660 tid=9616 UI work window=MainWindow refreshes=3 routeScans=3 transportScans=3 routeNodes=244 hosts=9 maxRefreshMs=78
+2026-11-06T22:22:51.990 pid=6660 tid=9616 ui trace pointer press window=MainWindow traceCall=1 sourceChain=Microsoft.UI.Xaml.FrameworkElement <- Microsoft.UI.Xaml.Controls.ScrollContentPresenter[name=ScrollContentPresenter] <- Microsoft.UI.Xaml.Controls.Grid <- Microsoft.UI.Xaml.Controls.Border[name=Root] <- Microsoft.UI.Xaml.Controls.ScrollViewer[name=ContentElement] <- Microsoft.UI.Xaml.Controls.Grid <- Microsoft.UI.Xaml.Controls.TextBox[name=TextBox] <- Microsoft.UI.Xaml.Controls.Grid[name=LayoutRoot] qpc=4501524061
+2026-11-06T22:22:55.173 pid=6660 tid=9616 UI work window=MainWindow refreshes=9 routeScans=9 transportScans=9 routeNodes=254 hosts=11 maxRefreshMs=94
+2026-11-06T22:23:00.289 pid=6660 tid=9616 UI work window=MainWindow refreshes=10 routeScans=10 transportScans=10 routeNodes=254 hosts=11 maxRefreshMs=31
+2026-11-06T22:23:05.346 pid=6660 tid=9616 UI work window=MainWindow refreshes=19 routeScans=19 transportScans=19 routeNodes=254 hosts=11 maxRefreshMs=32
+2026-11-06T22:23:10.505 pid=6660 tid=9616 UI work window=MainWindow refreshes=11 routeScans=11 transportScans=11 routeNodes=252 hosts=11 maxRefreshMs=47
+2026-11-06T22:23:10.962 pid=6660 tid=9616 ui trace pointer press window=MainWindow traceCall=2 sourceChain=Microsoft.UI.Xaml.Controls.TextBlock <- Microsoft.UI.Xaml.Controls.FontIcon <- Microsoft.UI.Xaml.Controls.ContentPresenter[name=ContentPresenter] <- Microsoft.UI.Xaml.Controls.Button[name=TopSearchPlayButton] <- Microsoft.UI.Xaml.Controls.Grid <- Microsoft.UI.Xaml.Controls.Grid <- Microsoft.UI.Xaml.Controls.ContentPresenter <- Microsoft.UI.Xaml.Controls.Border qpc=4691242119
+2026-11-06T22:23:11.632 pid=6660 tid=9616 ui trace pointer press window=MainWindow traceCall=3 sourceChain=Microsoft.UI.Xaml.Controls.StackPanel[name=StackedGridSectionContent] <- Microsoft.UI.Xaml.Controls.Primitives.ListViewItemPresenter[name=Root] <- Microsoft.UI.Xaml.Controls.ListViewItem <- Microsoft.UI.Xaml.Controls.ItemsStackPanel <- Microsoft.UI.Xaml.Controls.ItemsPresenter <- Microsoft.UI.Xaml.Controls.ScrollContentPresenter[name=ScrollContentPresenter] <- Microsoft.UI.Xaml.Controls.Grid <- Microsoft.UI.Xaml.Controls.Border[name=Root] qpc=4697954771
+2026-11-06T22:23:16.975 pid=6660 tid=9616 UI work window=MainWindow refreshes=8 routeScans=6 transportScans=8 routeNodes=299 hosts=11 maxRefreshMs=62
+2026-11-06T22:23:17.032 pid=6660 tid=9616 ui trace pointer press window=MainWindow traceCall=4 sourceChain=Microsoft.UI.Xaml.Controls.ContentPresenter[name=ContentPresenter] <- Microsoft.UI.Xaml.Controls.Button[name=AudioBadgeButton] <- Microsoft.UI.Xaml.Controls.Grid[name=RootGrid] <- AMP.UI.Views.AudioBadgeControl[name=AudioBadgeControl] <- Microsoft.UI.Xaml.Controls.Grid[name=LCD] <- AMP.UI.Views.NowPlayingControl[name=LCD] <- Microsoft.UI.Xaml.Controls.Grid <- Microsoft.UI.Xaml.Controls.Grid[name=TransportBar] qpc=4751942619
+2026-11-06T22:23:17.782 pid=6660 tid=9616 ui trace pointer press window=MainWindow traceCall=5 sourceChain=Microsoft.UI.Xaml.Controls.Grid[name=TransportBar] <- Microsoft.UI.Xaml.Controls.Grid <- Microsoft.UI.Xaml.Controls.ContentPresenter <- Microsoft.UI.Xaml.Controls.ContentPresenter[name=ContentPresenter] <- Microsoft.UI.Xaml.Controls.Grid[name=ContentGrid] <- Microsoft.UI.Xaml.Controls.Border <- Microsoft.UI.Xaml.Controls.Grid[name=ContentRoot] <- Microsoft.UI.Xaml.Controls.Grid qpc=4759444717
+2026-11-06T22:23:21.976 pid=6660 tid=9616 UI work window=MainWindow refreshes=5 routeScans=3 transportScans=5 routeNodes=299 hosts=11 maxRefreshMs=47
+2026-11-06T22:23:26.975 pid=6660 tid=9616 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=299 hosts=11 maxRefreshMs=47
+2026-11-06T22:23:31.839 pid=6660 tid=9616 ui trace pointer press window=MainWindow traceCall=6 sourceChain=Microsoft.UI.Xaml.Shapes.Path <- Microsoft.UI.Xaml.Controls.Canvas <- Microsoft.UI.Xaml.Controls.StackPanel[name=AudioBadgeCompact] <- Microsoft.UI.Xaml.Controls.StackPanel <- Microsoft.UI.Xaml.Controls.ContentPresenter[name=ContentPresenter] <- Microsoft.UI.Xaml.Controls.Button[name=AudioBadgeButton] <- Microsoft.UI.Xaml.Controls.Grid[name=RootGrid] <- AMP.UI.Views.AudioBadgeControl[name=AudioBadgeControl] qpc=4900006991
+2026-11-06T22:23:31.998 pid=6660 tid=9616 UI work window=MainWindow refreshes=4 routeScans=3 transportScans=4 routeNodes=299 hosts=11 maxRefreshMs=47
+2026-11-06T22:23:32.486 pid=6660 tid=9616 ui trace pointer press window=MainWindow traceCall=7 sourceChain=Microsoft.UI.Xaml.Controls.Grid[name=TransportBar] <- Microsoft.UI.Xaml.Controls.Grid <- Microsoft.UI.Xaml.Controls.ContentPresenter <- Microsoft.UI.Xaml.Controls.ContentPresenter[name=ContentPresenter] <- Microsoft.UI.Xaml.Controls.Grid[name=ContentGrid] <- Microsoft.UI.Xaml.Controls.Border <- Microsoft.UI.Xaml.Controls.Grid[name=ContentRoot] <- Microsoft.UI.Xaml.Controls.Grid qpc=4906484881
+2026-11-06T22:23:40.188 pid=6660 tid=9616 ui trace pointer press window=MainWindow traceCall=8 sourceChain=Microsoft.UI.Xaml.Controls.Grid[name=ContentGrid] <- Microsoft.UI.Xaml.Controls.Border <- Microsoft.UI.Xaml.Controls.Grid[name=ContentRoot] <- Microsoft.UI.Xaml.Controls.Grid <- Microsoft.UI.Xaml.Controls.SplitView[name=RootSplitView] <- Microsoft.UI.Xaml.Controls.Grid <- Microsoft.UI.Xaml.Controls.Grid[name=RootGrid] <- Microsoft.UI.Xaml.Controls.NavigationView[name=NavView] qpc=4983509799
+2026-11-06T22:23:40.232 pid=6660 tid=9616 UI work window=MainWindow refreshes=3 routeScans=1 transportScans=3 routeNodes=299 hosts=11 maxRefreshMs=47
+2026-11-06T22:23:43.081 pid=5112 tid=3352 UI adapter loaded
+2026-11-06T22:23:43.081 pid=5112 tid=3352 UI window lifecycle WinEvent hook=133817
+2026-11-06T22:23:43.081 pid=5112 tid=11996 UI broker IPC connected
+2026-11-06T22:23:43.875 pid=5112 tid=19852 UI dispatcher bound window=MainWindow
+2026-11-06T22:23:43.876 pid=5112 tid=19852 Apple player observation failed stage=Player::PlayerState IPlayer QueryInterface hr=0x80004002
+2026-11-06T22:23:43.894 pid=5112 tid=19852 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=206 hosts=9 maxRefreshMs=32
+2026-11-06T22:23:50.012 pid=5112 tid=19852 UI work window=MainWindow refreshes=6 routeScans=2 transportScans=2 routeNodes=244 hosts=9 maxRefreshMs=78
+2026-11-06T22:23:50.297 pid=5112 tid=19852 ui trace pointer press window=MainWindow traceCall=1 sourceChain=Microsoft.UI.Xaml.Controls.Grid[name=LayoutRoot] <- Microsoft.UI.Xaml.Controls.Primitives.NavigationViewItemPresenter[name=NavigationViewItemPresenter] <- Microsoft.UI.Xaml.Controls.Grid[name=NVIRootGrid] <- AMP.UI.Views.NavigationViewItem[automationId=DBID:0xec231ac88215809c-PID:0x28072d64fbdd4acc-PPID:0x0-PIPID:0x0-I <- Microsoft.UI.Xaml.Controls.ItemsRepeater[name=NavigationViewItemMenuItemsHost] <- Microsoft.UI.Xaml.Controls.Grid[name=NVIRootGrid] <- AMP.UI.Views.NavigationViewItem[automationId=Sidebar_Pins_Header_Library] <- Microsoft.UI.Xaml.Controls.ItemsRepeater[name=NavigationViewItemMenuItemsHost] qpc=5084614424
+2026-11-06T22:23:51.705 pid=5112 tid=19852 ui trace pointer press window=MainWindow traceCall=2 sourceChain=Microsoft.UI.Xaml.Controls.ContentPresenter[name=ContentPresenter] <- Microsoft.UI.Xaml.Controls.Primitives.ToggleButton[name=FilterButton] <- Microsoft.UI.Xaml.Controls.StackPanel[name=ContentRoot] <- Microsoft.UI.Xaml.Controls.Grid[name=Root] <- AMP.UI.Controls.FilterToggleButton <- Microsoft.UI.Xaml.Controls.ContentPresenter <- Microsoft.UI.Xaml.Controls.StackPanel <- Microsoft.UI.Xaml.Controls.ItemsPresenter qpc=5098684965
+2026-11-06T22:23:55.323 pid=5112 tid=19852 UI work window=MainWindow refreshes=37 routeScans=37 transportScans=37 routeNodes=252 hosts=10 maxRefreshMs=62
+2026-11-06T22:23:56.493 pid=5112 tid=19852 ui trace pointer press window=MainWindow traceCall=3 sourceChain=Microsoft.UI.Xaml.Controls.TextBlock <- Microsoft.UI.Xaml.Controls.FontIcon[name=PlayPauseFontIcon] <- Microsoft.UI.Xaml.Controls.ContentPresenter[name=ContentPresenter] <- Microsoft.UI.Xaml.Controls.Button[name=PlayPauseButton] <- Microsoft.UI.Xaml.Controls.Grid <- AMP.UI.Views.PlayItemStatusButton <- Microsoft.UI.Xaml.Controls.Grid <- Microsoft.UI.Xaml.Controls.Grid qpc=5146558246
+2026-11-06T22:23:56.966 pid=5112 tid=19852 ui trace pointer press window=MainWindow traceCall=4 sourceChain=Microsoft.UI.Xaml.Controls.StackPanel[name=SingleItemSectionContent] <- Microsoft.UI.Xaml.Controls.ContentPresenter <- Microsoft.UI.Xaml.Controls.ContentControl <- Microsoft.UI.Xaml.Controls.StackPanel <- Microsoft.UI.Xaml.Controls.ContentPresenter <- Microsoft.UI.Xaml.Controls.ContentControl <- Microsoft.UI.Xaml.Controls.ItemsPresenter <- Microsoft.UI.Xaml.Controls.ScrollContentPresenter[name=ScrollContentPresenter] qpc=5151286344
+2026-11-06T22:23:59.356 pid=5112 tid=19852 ui trace pointer press window=MainWindow traceCall=5 sourceChain=Microsoft.UI.Xaml.Shapes.Path <- Microsoft.UI.Xaml.Controls.Canvas <- Microsoft.UI.Xaml.Controls.StackPanel[name=AudioBadgeCompact] <- Microsoft.UI.Xaml.Controls.StackPanel <- Microsoft.UI.Xaml.Controls.ContentPresenter[name=ContentPresenter] <- Microsoft.UI.Xaml.Controls.Button[name=AudioBadgeButton] <- Microsoft.UI.Xaml.Controls.Grid[name=RootGrid] <- AMP.UI.Views.AudioBadgeControl[name=AudioBadgeControl] qpc=5175176242
+2026-11-06T22:24:02.777 pid=5112 tid=19852 UI work window=MainWindow refreshes=12 routeScans=9 transportScans=12 routeNodes=297 hosts=10 maxRefreshMs=79
+2026-11-06T22:24:08.174 pid=5112 tid=19852 UI work window=MainWindow refreshes=3 routeScans=3 transportScans=3 routeNodes=297 hosts=10 maxRefreshMs=78
+2026-11-06T22:24:08.176 pid=5112 tid=19852 ui trace pointer press window=MainWindow traceCall=6 sourceChain=Microsoft.UI.Xaml.Controls.Grid <- Microsoft.UI.Xaml.Controls.Border[name=Root] <- Microsoft.UI.Xaml.Controls.ScrollViewer[name=ScrollViewer] <- Microsoft.UI.Xaml.Controls.Border <- Microsoft.UI.Xaml.Controls.GridView[name=ContentGridView] <- Microsoft.UI.Xaml.Controls.Grid[name=ContentGridViewWrapper] <- Microsoft.UI.Xaml.Controls.Grid <- AMP.UI.Controls.ShelfView qpc=5263378157
+2026-11-06T22:24:13.180 pid=5112 tid=19852 UI work window=MainWindow refreshes=3 routeScans=2 transportScans=3 routeNodes=297 hosts=10 maxRefreshMs=63
+2026-11-06T22:24:18.175 pid=5112 tid=19852 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=63
+2026-11-06T22:24:23.176 pid=5112 tid=19852 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=63
+2026-11-06T22:24:25.253 pid=5112 tid=19852 ui trace pointer press window=MainWindow traceCall=7 sourceChain=Microsoft.UI.Xaml.Controls.Grid[name=ContentGrid] <- Microsoft.UI.Xaml.Controls.Border <- Microsoft.UI.Xaml.Controls.Grid[name=ContentRoot] <- Microsoft.UI.Xaml.Controls.Grid <- Microsoft.UI.Xaml.Controls.SplitView[name=RootSplitView] <- Microsoft.UI.Xaml.Controls.Grid <- Microsoft.UI.Xaml.Controls.Grid[name=RootGrid] <- Microsoft.UI.Xaml.Controls.NavigationView[name=NavView] qpc=5434152291
