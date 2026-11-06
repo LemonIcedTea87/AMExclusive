@@ -3129,6 +3129,11 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
     const bool resumeP0TraceSample = resumeP0Trace &&
         (resumeP0Call <= 8 || resumeP0Call % 16 == 0);
     const auto caller = reinterpret_cast<std::uintptr_t>(_ReturnAddress());
+    // The first P0 Fill calls can occur long after other converters have already
+    // consumed the process-wide trace budget. Capture their caller stacks using
+    // a dedicated per-P0 counter instead of the generic Fill counter.
+    const auto p0FillStack = nativeTrace && p0Candidate && p0TraceCall <= 8
+        ? CaptureCurrentStackText(2, 8) : std::wstring{};
     struct NativeInputTraceContext final {
         AudioConverterComplexInputDataProcFn original{};
         void* userData{};
@@ -3152,17 +3157,21 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
         auto* trace = static_cast<NativeInputTraceContext*>(context);
         const auto requested = packets ? *packets : 0u;
         const auto enter = CurrentQpc();
+        const auto callbackStackIndex =
+            g_nativeTraceEnabled.load(std::memory_order_acquire) && trace->p0Candidate
+                ? g_nativeTraceP0CallbackStackCalls.fetch_add(1, std::memory_order_relaxed) + 1
+                : 0;
+        const bool traceP0CallbackStack =
+            callbackStackIndex != 0 && callbackStackIndex <= 4;
+        // Capture before Apple's callback runs; capturing after it returns only
+        // sees this detour frame and loses the upstream CoreAudio/CoreMedia caller.
+        const auto callbackStack = traceP0CallbackStack
+            ? CaptureCurrentStackText(2, 8) : std::wstring{};
         const auto result = trace->original(inputConverter, packets, data, descriptions,
                                             trace->userData);
         const auto returned = packets ? *packets : 0u;
         const auto exit = CurrentQpc();
         ++trace->inputCalls;
-        const bool traceP0CallbackStack =
-            g_nativeTraceEnabled.load(std::memory_order_acquire) &&
-            trace->p0Candidate &&
-            g_nativeTraceP0CallbackStackCalls.fetch_add(1, std::memory_order_relaxed) < 4;
-        const auto callbackStack = traceP0CallbackStack
-            ? CaptureCurrentStackText(1, 8) : std::wstring{};
         trace->lastRequested = requested;
         trace->lastReturned = returned;
         trace->lastResult = result;
@@ -3192,6 +3201,25 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
                     (void)DrainV2LocalQueue(trace->converter, trace->localQueue);
                 }
             }
+        }
+        if (traceP0CallbackStack) {
+            Log(L"native trace P0 callback stack converter=" +
+                std::to_wstring(reinterpret_cast<std::uintptr_t>(trace->converter)) +
+                L" callbackStackIndex=" + std::to_wstring(callbackStackIndex) +
+                L" fillCall=" + std::to_wstring(trace->fillCall) +
+                L" inputCall=" + std::to_wstring(trace->inputCalls) +
+                L" inputProc=" +
+                    std::to_wstring(reinterpret_cast<std::uintptr_t>(trace->original)) +
+                L" inputUserData=" +
+                    std::to_wstring(reinterpret_cast<std::uintptr_t>(trace->userData)) +
+                L" inputConverter=" +
+                    std::to_wstring(reinterpret_cast<std::uintptr_t>(inputConverter)) +
+                L" requestedPackets=" + std::to_wstring(requested) +
+                L" returnedPackets=" + std::to_wstring(returned) +
+                L" result=" + std::to_wstring(result) +
+                L" enterQpc=" + std::to_wstring(enter) +
+                L" returnQpc=" + std::to_wstring(exit) +
+                L" callbackEntryStack=" + callbackStack);
         }
         if (traceP0InputPayload) {
             Log(L"native trace P0 input payload converter=" +
@@ -3353,7 +3381,9 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
             L" inputFirstPacketBytes=" + std::to_wstring(inputContext.lastPackets.firstBytes) +
             L" inputTotalPacketBytes=" + std::to_wstring(inputContext.lastPackets.totalPacketBytes) +
             L" enterQpc=" + std::to_wstring(enterQpc) +
-            L" returnQpc=" + std::to_wstring(fillReturnQpc));
+            L" returnQpc=" + std::to_wstring(fillReturnQpc) +
+            L" caller=" + std::to_wstring(caller) +
+            L" callerStack=" + p0FillStack);
     }
     if (resumeP0Trace && (resumeP0TraceSample || producedPackets != 0)) {
         const auto returnQpc = CurrentQpc();
