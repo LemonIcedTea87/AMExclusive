@@ -1,30 +1,30 @@
-2026-11-07T03:04:27.244 pid=3012 tid=21116 UI adapter loaded
-2026-11-07T03:04:27.244 pid=3012 tid=21116 UI window lifecycle WinEvent hook=523897237
-2026-11-07T03:04:27.244 pid=3012 tid=25024 UI broker IPC connected
-2026-11-07T03:04:27.564 pid=3012 tid=24852 UI dispatcher bound window=MainWindow
-2026-11-07T03:04:27.567 pid=3012 tid=24852 Apple player observation failed stage=Player::PlayerState IPlayer QueryInterface hr=0x80004002
-2026-11-07T03:04:27.576 pid=3012 tid=24852 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.Primitives.ToggleButton[name=ShuffleButton]
-2026-11-07T03:04:27.576 pid=3012 tid=24852 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.AppBarButton[automationId=TransportControl_SkipBack]
-2026-11-07T03:04:27.578 pid=3012 tid=24852 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.AppBarButton[automationId=TransportControl_PlayPauseStop]
-2026-11-07T03:04:27.578 pid=3012 tid=24852 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.AppBarButton[automationId=TransportControl_SkipForward]
-2026-11-07T03:04:27.579 pid=3012 tid=24852 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.Button[name=RepeatButton]
-2026-11-07T03:04:27.579 pid=3012 tid=24852 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.Button[name=ActionButton]
-2026-11-07T03:04:27.580 pid=3012 tid=24852 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.Button[name=AudioBadgeButton]
-2026-11-07T03:04:27.580 pid=3012 tid=24852 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.Button[name=VolumeButton]
-2026-11-07T03:04:27.581 pid=3012 tid=24852 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.Button[name=AirPlayButton]
-2026-11-07T03:04:27.581 pid=3012 tid=24852 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.Primitives.ToggleButton[name=LyricsToggleButton]
-2026-11-07T03:04:27.582 pid=3012 tid=24852 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.Primitives.ToggleButton[name=PlayQueueToggleButton]
-2026-11-07T03:04:27.589 pid=3012 tid=24852 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=206 hosts=9 maxRefreshMs=31
-2026-11-07T03:04:32.722 pid=3012 tid=24852 UI work window=MainWindow refreshes=4 routeScans=4 transportScans=4 routeNodes=244 hosts=9 maxRefreshMs=63
-2026-11-07T03:04:34.153 pid=3012 tid=24852 ui trace pointer press window=MainWindow traceCall=1 sourceChain=Microsoft.UI.Xaml.Controls.Grid[name=LayoutRoot] <- Microsoft.UI.Xaml.Controls.Primitives.NavigationViewItemPresenter[name=NavigationViewItemPresenter] <- Microsoft.UI.Xaml.Controls.Grid[name=NVIRootGrid] <- AMP.UI.Views.NavigationViewItem[automationId=DBID:0xec231ac88215809c-PID:0x044c3d85430c3601-PPID:0x0-PIPID:0x0-I <- Microsoft.UI.Xaml.Controls.ItemsRepeater[name=NavigationViewItemMenuItemsHost] <- Microsoft.UI.Xaml.Controls.Grid[name=NVIRootGrid] <- AMP.UI.Views.NavigationViewItem[automationId=Sidebar_Pins_Header_Library] <- Microsoft.UI.Xaml.Controls.ItemsRepeater[name=NavigationViewItemMenuItemsHost] qpc=173523169500
-2026-11-07T03:04:37.834 pid=3012 tid=24852 UI work window=MainWindow refreshes=50 routeScans=49 transportScans=50 routeNodes=252 hosts=10 maxRefreshMs=47
-2026-11-07T03:04:39.998 pid=3012 tid=24852 ui trace pointer press window=MainWindow traceCall=2 sourceChain=Microsoft.UI.Xaml.Controls.TextBlock <- Microsoft.UI.Xaml.Controls.FontIcon[name=PlayPauseFontIcon] <- Microsoft.UI.Xaml.Controls.ContentPresenter[name=ContentPresenter] <- Microsoft.UI.Xaml.Controls.Button[name=PlayPauseButton] <- Microsoft.UI.Xaml.Controls.Grid <- AMP.UI.Views.PlayItemStatusButton <- Microsoft.UI.Xaml.Controls.Grid <- Microsoft.UI.Xaml.Controls.Grid qpc=173581610177
-2026-11-07T03:04:40.848 pid=3012 tid=24852 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.Button[name=ReactionsButton]
-2026-11-07T03:04:40.849 pid=3012 tid=24852 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.Button
-2026-11-07T03:04:47.312 pid=3012 tid=24852 UI work window=MainWindow refreshes=17 routeScans=16 transportScans=17 routeNodes=296 hosts=10 maxRefreshMs=63
-2026-11-07T03:04:52.309 pid=3012 tid=24852 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=296 hosts=10 maxRefreshMs=47
-2026-11-07T03:04:57.308 pid=3012 tid=24852 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=293 hosts=10 maxRefreshMs=47
-2026-11-07T03:05:02.314 pid=3012 tid=24852 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=296 hosts=10 maxRefreshMs=62
-2026-11-07T03:05:07.316 pid=3012 tid=24852 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=62
-2026-11-07T03:05:12.315 pid=3012 tid=24852 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=62
-2026-11-07T03:05:14.070 pid=3012 tid=24852 ui trace pointer press window=MainWindow traceCall=3 sourceChain=Microsoft.UI.Xaml.Controls.Grid[name=ContentGrid] <- Microsoft.UI.Xaml.Controls.Border <- Microsoft.UI.Xaml.Controls.Grid[name=ContentRoot] <- Microsoft.UI.Xaml.Controls.Grid <- Microsoft.UI.Xaml.Controls.SplitView[name=RootSplitView] <- Microsoft.UI.Xaml.Controls.Grid <- Microsoft.UI.Xaml.Controls.Grid[name=RootGrid] <- Microsoft.UI.Xaml.Controls.NavigationView[name=NavView] qpc=173922319490
+2026-11-07T03:36:58.429 pid=26136 tid=24564 UI adapter loaded
+2026-11-07T03:36:58.430 pid=26136 tid=24564 UI window lifecycle WinEvent hook=372966077
+2026-11-07T03:36:58.430 pid=26136 tid=488 UI broker IPC connected
+2026-11-07T03:36:58.658 pid=26136 tid=28528 UI dispatcher bound window=MainWindow
+2026-11-07T03:36:58.660 pid=26136 tid=28528 Apple player observation failed stage=Player::PlayerState IPlayer QueryInterface hr=0x80004002
+2026-11-07T03:36:58.672 pid=26136 tid=28528 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.Primitives.ToggleButton[name=ShuffleButton]
+2026-11-07T03:36:58.675 pid=26136 tid=28528 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.AppBarButton[automationId=TransportControl_SkipBack]
+2026-11-07T03:36:58.675 pid=26136 tid=28528 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.AppBarButton[automationId=TransportControl_PlayPauseStop]
+2026-11-07T03:36:58.676 pid=26136 tid=28528 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.AppBarButton[automationId=TransportControl_SkipForward]
+2026-11-07T03:36:58.677 pid=26136 tid=28528 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.Button[name=RepeatButton]
+2026-11-07T03:36:58.678 pid=26136 tid=28528 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.Button[name=ActionButton]
+2026-11-07T03:36:58.678 pid=26136 tid=28528 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.Button[name=AudioBadgeButton]
+2026-11-07T03:36:58.678 pid=26136 tid=28528 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.Button[name=VolumeButton]
+2026-11-07T03:36:58.678 pid=26136 tid=28528 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.Button[name=AirPlayButton]
+2026-11-07T03:36:58.680 pid=26136 tid=28528 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.Primitives.ToggleButton[name=LyricsToggleButton]
+2026-11-07T03:36:58.680 pid=26136 tid=28528 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.Primitives.ToggleButton[name=PlayQueueToggleButton]
+2026-11-07T03:36:58.691 pid=26136 tid=28528 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=206 hosts=9 maxRefreshMs=31
+2026-11-07T03:37:04.032 pid=26136 tid=28528 ui trace pointer press window=MainWindow traceCall=1 sourceChain=Microsoft.UI.Xaml.Controls.TextBlock <- AMP.UI.Controls.FirstColumnAdjustableGrid <- Microsoft.UI.Xaml.Controls.Grid <- Microsoft.UI.Xaml.Controls.ContentPresenter <- Microsoft.UI.Xaml.Controls.ContentPresenter[name=ContentPresenter] <- Microsoft.UI.Xaml.Controls.Grid[name=ContentGrid] <- Microsoft.UI.Xaml.Controls.Grid[name=PresenterContentRootGrid] <- Microsoft.UI.Xaml.Controls.Grid[name=LayoutRoot] qpc=193021967216
+2026-11-07T03:37:04.175 pid=26136 tid=28528 UI work window=MainWindow refreshes=3 routeScans=3 transportScans=3 routeNodes=245 hosts=10 maxRefreshMs=94
+2026-11-07T03:37:06.170 pid=26136 tid=28528 ui trace pointer press window=MainWindow traceCall=2 sourceChain=Microsoft.UI.Xaml.Controls.TextBlock <- AMP.UI.Controls.FirstColumnAdjustableGrid <- Microsoft.UI.Xaml.Controls.Grid <- Microsoft.UI.Xaml.Controls.ContentPresenter <- Microsoft.UI.Xaml.Controls.ContentPresenter[name=ContentPresenter] <- Microsoft.UI.Xaml.Controls.Grid[name=ContentGrid] <- Microsoft.UI.Xaml.Controls.Grid[name=PresenterContentRootGrid] <- Microsoft.UI.Xaml.Controls.Grid[name=LayoutRoot] qpc=193043341769
+2026-11-07T03:37:09.278 pid=26136 tid=28528 ui trace pointer press window=MainWindow traceCall=3 sourceChain=Microsoft.UI.Xaml.Controls.TextBlock <- Microsoft.UI.Xaml.Controls.FontIcon[name=PlayPauseFontIcon] <- Microsoft.UI.Xaml.Controls.ContentPresenter[name=ContentPresenter] <- Microsoft.UI.Xaml.Controls.Button[name=PlayPauseButton] <- Microsoft.UI.Xaml.Controls.Grid <- AMP.UI.Views.PlayItemStatusButton <- Microsoft.UI.Xaml.Controls.Grid <- Microsoft.UI.Xaml.Controls.Grid qpc=193074419401
+2026-11-07T03:37:09.321 pid=26136 tid=28528 UI work window=MainWindow refreshes=38 routeScans=37 transportScans=38 routeNodes=252 hosts=10 maxRefreshMs=47
+2026-11-07T03:37:10.163 pid=26136 tid=28528 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.Button[name=ReactionsButton]
+2026-11-07T03:37:10.164 pid=26136 tid=28528 ui trace transport button discovered window=MainWindow control=Microsoft.UI.Xaml.Controls.Button
+2026-11-07T03:37:15.102 pid=26136 tid=28528 UI work window=MainWindow refreshes=5 routeScans=5 transportScans=5 routeNodes=291 hosts=10 maxRefreshMs=47
+2026-11-07T03:37:23.520 pid=26136 tid=28528 UI work window=MainWindow refreshes=3 routeScans=3 transportScans=3 routeNodes=297 hosts=10 maxRefreshMs=63
+2026-11-07T03:37:33.505 pid=26136 tid=28528 UI work window=MainWindow refreshes=3 routeScans=3 transportScans=3 routeNodes=297 hosts=10 maxRefreshMs=62
+2026-11-07T03:37:38.519 pid=26136 tid=28528 UI work window=MainWindow refreshes=1 routeScans=1 transportScans=1 routeNodes=297 hosts=10 maxRefreshMs=63
+2026-11-07T03:37:43.170 pid=26136 tid=28528 ui trace pointer press window=MainWindow traceCall=4 sourceChain=Microsoft.UI.Xaml.Controls.Grid[name=ContentGrid] <- Microsoft.UI.Xaml.Controls.Border <- Microsoft.UI.Xaml.Controls.Grid[name=ContentRoot] <- Microsoft.UI.Xaml.Controls.Grid <- Microsoft.UI.Xaml.Controls.SplitView[name=RootSplitView] <- Microsoft.UI.Xaml.Controls.Grid <- Microsoft.UI.Xaml.Controls.Grid[name=RootGrid] <- Microsoft.UI.Xaml.Controls.NavigationView[name=NavView] qpc=193413319471
+2026-11-07T03:37:43.463 pid=26136 tid=24564 GetAppProperty(MainWindow) failed hr=0x8000000b
