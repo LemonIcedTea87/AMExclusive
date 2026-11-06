@@ -1215,6 +1215,78 @@ void AppendP1Scalar(std::uint64_t& hash, const T& value) noexcept {
     AppendP1Hash(hash, &value, sizeof(value));
 }
 
+constexpr std::uint32_t kNativeTracePacketFingerprintLimit = 12;
+
+struct NativeTracePacketFingerprintShape final {
+    std::uint64_t hashes[kNativeTracePacketFingerprintLimit]{};
+    std::uint32_t byteSizes[kNativeTracePacketFingerprintLimit]{};
+    std::uint32_t variableFrames[kNativeTracePacketFingerprintLimit]{};
+    std::uint32_t count{};
+    bool valid{};
+};
+
+// Hash each compressed packet separately. This allows two callback streams
+// with different batching boundaries to be compared without retaining audio.
+NativeTracePacketFingerprintShape InspectNativeTracePacketFingerprints(
+    const void* rawList, void** descriptions, std::uint32_t packetCount) noexcept {
+    NativeTracePacketFingerprintShape shape{};
+    if (!rawList || !descriptions || packetCount == 0) return shape;
+    __try {
+        const auto* list = static_cast<const AppleAudioBufferList*>(rawList);
+        if (list->mNumberBuffers != 1 || !list->mBuffers[0].mData) return shape;
+        const auto* packets =
+            static_cast<const AppleAudioStreamPacketDescription*>(*descriptions);
+        if (!packets) return shape;
+        const auto& buffer = list->mBuffers[0];
+        const auto count = std::min(packetCount, kNativeTracePacketFingerprintLimit);
+        shape.valid = true;
+        for (std::uint32_t index = 0; index < count; ++index) {
+            const auto offset = packets[index].mStartOffset;
+            const auto bytes = packets[index].mDataByteSize;
+            if (offset < 0 ||
+                static_cast<std::uint64_t>(offset) > buffer.mDataByteSize ||
+                bytes > buffer.mDataByteSize - static_cast<std::uint32_t>(offset) ||
+                bytes == 0) {
+                shape.valid = false;
+                shape.count = 0;
+                break;
+            }
+            auto hash = kFnv1aOffset;
+            const auto* packetData =
+                static_cast<const std::uint8_t*>(buffer.mData) +
+                static_cast<std::size_t>(offset);
+            AppendP1Hash(hash, packetData, bytes);
+            shape.hashes[index] = hash;
+            shape.byteSizes[index] = bytes;
+            shape.variableFrames[index] = packets[index].mVariableFramesInPacket;
+            ++shape.count;
+        }
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        shape = {};
+    }
+    return shape;
+}
+
+std::wstring NativeTracePacketFingerprintText(
+    const NativeTracePacketFingerprintShape& shape) {
+    std::wostringstream text;
+    text << L" packetFingerprints=";
+    if (!shape.valid) {
+        text << L"<unavailable>";
+    } else {
+        text << std::hex << std::setfill(L'0');
+        for (std::uint32_t index = 0; index < shape.count; ++index) {
+            if (index != 0) text << L',';
+            text << std::dec << index << L':' << shape.byteSizes[index] << L':'
+                 << shape.variableFrames[index] << L':' << std::hex
+                 << std::setw(16) << shape.hashes[index];
+        }
+        text << std::dec;
+    }
+    text << L" packetFingerprintCount=" << shape.count;
+    return text.str();
+}
+
 struct NativeTracePayloadShape final {
     std::uint64_t totalBytes{};
     std::uint64_t hashedBytes{};
@@ -1223,13 +1295,15 @@ struct NativeTracePayloadShape final {
     std::uint32_t nonEmptyBuffers{};
     bool valid{};
     bool complete{};
+    NativeTracePacketFingerprintShape packetFingerprints{};
 };
 
 // Hash only a bounded prefix of input payloads for startup diagnostics. This
 // is read-only, never retains encoded content, and is guarded because the
 // callback's AudioBufferList is owned by Apple's decoder.
 NativeTracePayloadShape InspectNativeTracePayload(
-    const void* rawList, std::uint32_t maximumBytes = 65536u) noexcept {
+    const void* rawList, std::uint32_t maximumBytes = 65536u,
+    void** packetDescriptions = nullptr, std::uint32_t packetCount = 0) noexcept {
     NativeTracePayloadShape shape{};
     if (!rawList) return shape;
     shape.signature = kFnv1aOffset;
@@ -1259,6 +1333,10 @@ NativeTracePayloadShape InspectNativeTracePayload(
         shape.complete = shape.valid && shape.hashedBytes == shape.totalBytes;
     } __except (EXCEPTION_EXECUTE_HANDLER) {
         shape = {};
+    }
+    if (shape.valid && packetDescriptions && packetCount != 0) {
+        shape.packetFingerprints =
+            InspectNativeTracePacketFingerprints(rawList, packetDescriptions, packetCount);
     }
     return shape;
 }
@@ -3227,7 +3305,8 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
         const bool traceP0InputPayload =
             payloadCallIndex != 0 && payloadCallIndex <= kP0InputPayloadTraceLimit;
         if (traceP0InputPayload) {
-            trace->lastPayload = InspectNativeTracePayload(data);
+            trace->lastPayload = InspectNativeTracePayload(
+                data, 65536u, descriptions, returned);
         }
         if (result == 0 && trace->localQueue && data) {
             const auto* list = static_cast<const AppleAudioBufferList*>(data);
@@ -3287,6 +3366,7 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
                 L" payloadValid=" + std::to_wstring(trace->lastPayload.valid) +
                 L" payloadComplete=" + std::to_wstring(trace->lastPayload.complete) +
                 L" packetCount=" + std::to_wstring(trace->lastPackets.packetCount) +
+                NativeTracePacketFingerprintText(trace->lastPayload.packetFingerprints) +
                 L" firstOffset=" + std::to_wstring(trace->lastPackets.firstOffset) +
                 L" lastOffset=" + std::to_wstring(trace->lastPackets.lastOffset) +
                 L" firstPacketFrames=" + std::to_wstring(trace->lastPackets.firstFrames) +
