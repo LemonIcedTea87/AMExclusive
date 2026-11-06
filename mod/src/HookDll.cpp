@@ -903,6 +903,10 @@ struct V2P0PcmTraceSlot final {
     std::atomic<std::uint64_t> traceEpoch{};
 };
 std::array<V2P0PcmTraceSlot, 32> g_v2P0PcmTraceSlots{};
+constexpr std::uint64_t kP0InputPayloadTraceLimit = 40;
+constexpr std::uint64_t kP0PcmTraceInitialCalls = 8;
+constexpr std::uint64_t kP0PcmTracePeriodicEveryCalls = 4;
+constexpr std::uint64_t kP0PcmTraceMaximumCall = 128;
 
 std::atomic<std::uint64_t> g_v2NativeGetBufferCalls{};
 std::atomic<std::uint64_t> g_v2NativeReleaseBufferCalls{};
@@ -3221,7 +3225,7 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
                       1, std::memory_order_relaxed) + 1
                 : 0;
         const bool traceP0InputPayload =
-            payloadCallIndex != 0 && payloadCallIndex <= 16;
+            payloadCallIndex != 0 && payloadCallIndex <= kP0InputPayloadTraceLimit;
         if (traceP0InputPayload) {
             trace->lastPayload = InspectNativeTracePayload(data);
         }
@@ -3349,7 +3353,11 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
         if (auto* sampleSlot = p0TraceSlot) {
             const auto sampleCall =
                 sampleSlot->nonEmptyCalls.fetch_add(1, std::memory_order_relaxed) + 1;
-            if (sampleCall <= 8) {
+            const bool traceP0PcmSample =
+                sampleCall <= kP0PcmTraceInitialCalls ||
+                (sampleCall <= kP0PcmTraceMaximumCall &&
+                 sampleCall % kP0PcmTracePeriodicEveryCalls == 0);
+            if (traceP0PcmSample) {
                 ammod::audio_v2::ApplePcmFormatView sampleFormat{};
                 const bool formatKnown =
                     g_audioCoreRuntime.DestinationFormat(converter, sampleFormat);
@@ -3365,6 +3373,8 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
                 Log(L"audio core v2 P0 PCM sample trace converter=" +
                     std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
                     L" eventSeq=" + std::to_wstring(NextNativeTraceTimelineSequence()) +
+                    L" traceEpoch=" + std::to_wstring(
+                        p0TraceSlot->traceEpoch.load(std::memory_order_acquire)) +
                     L" sampleCall=" + std::to_wstring(sampleCall) +
                     L" producedPackets=" + std::to_wstring(producedPackets) +
                     L" result=" + std::to_wstring(result) +
