@@ -2831,17 +2831,17 @@ AppleOSStatus __cdecl HookV2AudioConverterSetProperty(void* converter,
     const bool nativeTrace = g_nativeTraceEnabled.load(std::memory_order_acquire);
     const bool cursorProperty =
         propertyId == ammod::apple_private::audio_converter_property::kCursor;
-    const auto propertyQpcEnter = (nativeTrace || cursorProperty) ? CurrentQpc() : 0;
-    const auto propertyCaller = (nativeTrace || cursorProperty)
+    const auto propertyQpcEnter = nativeTrace ? CurrentQpc() : 0;
+    const auto propertyCaller = nativeTrace
         ? reinterpret_cast<std::uintptr_t>(_ReturnAddress()) : 0;
-    const auto propertyDataPrefix = cursorProperty
+    const auto propertyDataPrefix = nativeTrace && cursorProperty
         ? CaptureNativeTraceRawBytes(data, dataSize) : NativeTraceRawBytes{};
     const bool serializedCursorUpdate = cursorProperty && g_nativeP0Puller.Tracks(converter);
     std::unique_lock<std::mutex> p0PropertyLock;
     if (serializedCursorUpdate) p0PropertyLock = std::unique_lock<std::mutex>(g_p0FillMutex);
     const auto result = g_v2OriginalAudioConverterSetProperty
         ? g_v2OriginalAudioConverterSetProperty(converter, propertyId, dataSize, data) : -1;
-    const auto propertyQpcReturn = (nativeTrace || cursorProperty) ? CurrentQpc() : 0;
+    const auto propertyQpcReturn = nativeTrace ? CurrentQpc() : 0;
     if (serializedCursorUpdate && result == 0) {
         g_nativeP0Puller.ResumeAfterCursorProperty(converter);
     }
@@ -2861,8 +2861,8 @@ AppleOSStatus __cdecl HookV2AudioConverterSetProperty(void* converter,
             L" returnQpc=" + std::to_wstring(propertyQpcReturn) +
             L" stack=" + CaptureCurrentStackText(2, 6));
     }
-    if (propertyId == ammod::apple_private::audio_converter_property::kCursor &&
-        g_audioCoreRuntime.UiEnabled() && g_audioCoreRuntime.IsP0Converter(converter) &&
+    if (nativeTrace && cursorProperty && g_audioCoreRuntime.UiEnabled() &&
+        g_audioCoreRuntime.IsP0Converter(converter) &&
         g_p0CursorDiagnosticCalls.fetch_add(1, std::memory_order_relaxed) < 48) {
         Log(L"v2 P0 cursor SET converter=" +
             std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
@@ -2990,14 +2990,14 @@ AppleOSStatus __cdecl HookV2AudioConverterGetProperty(void* converter,
     const bool nativeTrace = g_nativeTraceEnabled.load(std::memory_order_acquire);
     const bool cursorProperty =
         propertyId == ammod::apple_private::audio_converter_property::kCursor;
-    const auto propertyQpcEnter = (nativeTrace || cursorProperty) ? CurrentQpc() : 0;
-    const auto propertyCaller = (nativeTrace || cursorProperty)
+    const auto propertyQpcEnter = nativeTrace ? CurrentQpc() : 0;
+    const auto propertyCaller = nativeTrace
         ? reinterpret_cast<std::uintptr_t>(_ReturnAddress()) : 0;
     const auto result = g_v2OriginalAudioConverterGetProperty
         ? g_v2OriginalAudioConverterGetProperty(converter, propertyId, dataSize, data) : -1;
-    const auto propertyQpcReturn = (nativeTrace || cursorProperty) ? CurrentQpc() : 0;
+    const auto propertyQpcReturn = nativeTrace ? CurrentQpc() : 0;
     const auto propertyDataSize = dataSize ? *dataSize : 0u;
-    const auto propertyDataPrefix = cursorProperty
+    const auto propertyDataPrefix = nativeTrace && cursorProperty
         ? CaptureNativeTraceRawBytes(data, propertyDataSize) : NativeTraceRawBytes{};
     if (nativeTrace &&
         g_nativeTracePropertyCalls.fetch_add(1, std::memory_order_relaxed) < 256) {
@@ -3015,8 +3015,8 @@ AppleOSStatus __cdecl HookV2AudioConverterGetProperty(void* converter,
             L" returnQpc=" + std::to_wstring(propertyQpcReturn) +
             L" stack=" + CaptureCurrentStackText(2, 6));
     }
-    if (propertyId == ammod::apple_private::audio_converter_property::kCursor &&
-        g_audioCoreRuntime.UiEnabled() && g_audioCoreRuntime.IsP0Converter(converter) &&
+    if (nativeTrace && cursorProperty && g_audioCoreRuntime.UiEnabled() &&
+        g_audioCoreRuntime.IsP0Converter(converter) &&
         g_p0CursorDiagnosticCalls.fetch_add(1, std::memory_order_relaxed) < 48) {
         Log(L"v2 P0 cursor GET converter=" +
             std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
@@ -3466,7 +3466,8 @@ AppleOSStatus __cdecl HookV2AudioConverterReset(void* converter) {
              rva(resetStack[2]) == ammod::apple_private::agent_stack::kLocalSeekResetFrame2[1]);
     }
     const bool trackedP0 = g_nativeP0Puller.Tracks(converter);
-    const bool registeredP0Before = g_audioCoreRuntime.IsP0Converter(converter);
+    const bool registeredP0Before = nativeTrace &&
+        g_audioCoreRuntime.IsP0Converter(converter);
     if (trackedP0) g_nativeP0Puller.PauseForReset(converter);
     std::unique_lock<std::mutex> p0ResetLock;
     if (trackedP0) p0ResetLock = std::unique_lock<std::mutex>(g_p0FillMutex);
