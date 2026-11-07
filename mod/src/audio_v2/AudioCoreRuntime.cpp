@@ -23,9 +23,9 @@ constexpr std::uint32_t kReferenceTimePerSecond = 10000000u;
 // observed cold-start burst without making the decoder callback wait.
 constexpr std::size_t kProductionQueueCapacity = 256;
 
-// Experimental cold-start probe: advance the native scheduler at 10% speed
+// Experimental cold-start probe: advance one 10 ms scheduler quantum every 500 ms
 // until the first bound ALAC/QLAC cursor is published, or fall back after 5 s.
-constexpr std::uint32_t kNativeStartupWarmupPeriodMs = 100;
+constexpr std::uint32_t kNativeStartupWarmupPeriodMs = 500;
 constexpr ULONGLONG kNativeStartupWarmupTimeoutMs = 5000;
 
 constexpr std::uint64_t NativePumpLowWaterFrames(std::uint32_t sampleRate) noexcept {
