@@ -231,6 +231,9 @@ std::atomic<std::uint64_t> g_nativeTracePropertyCalls{};
 std::atomic<std::uint64_t> g_nativeTraceTimelineSequence{};
 std::atomic<std::uint64_t> g_nativeTraceResetCalls{};
 std::atomic<std::uint64_t> g_p0CursorDiagnosticCalls{};
+std::atomic<void*> g_nativeTraceCursorBindingConverter{};
+std::atomic<std::uintptr_t> g_nativeTraceCursorBindingAddress{};
+std::atomic<std::uint64_t> g_nativeTraceCursorFillCalls{};
 std::atomic<void*> g_resumeP0TraceConverter{};
 std::atomic<ULONGLONG> g_resumeP0TraceUntilTick{};
 std::atomic<std::uint64_t> g_resumeP0TraceWatermark{};
@@ -1210,6 +1213,33 @@ bool NativeTraceRawBytesEqual(const NativeTraceRawBytes& left,
                               const NativeTraceRawBytes& right) noexcept {
     return left.valid && right.valid && left.count == right.count &&
         std::memcmp(left.bytes, right.bytes, left.count) == 0;
+}
+
+void PublishNativeTraceCursorBinding(void* converter,
+                                     std::uintptr_t targetAddress) noexcept {
+    g_nativeTraceCursorBindingConverter.store(nullptr, std::memory_order_release);
+    g_nativeTraceCursorBindingAddress.store(targetAddress, std::memory_order_relaxed);
+    g_nativeTraceCursorFillCalls.store(0, std::memory_order_relaxed);
+    g_nativeTraceCursorBindingConverter.store(converter, std::memory_order_release);
+}
+
+std::uintptr_t FindNativeTraceCursorBinding(void* converter) noexcept {
+    const auto ownerBefore =
+        g_nativeTraceCursorBindingConverter.load(std::memory_order_acquire);
+    if (!converter || ownerBefore != converter) return 0;
+    const auto address =
+        g_nativeTraceCursorBindingAddress.load(std::memory_order_relaxed);
+    const auto ownerAfter =
+        g_nativeTraceCursorBindingConverter.load(std::memory_order_acquire);
+    return ownerBefore == ownerAfter && ownerAfter == converter ? address : 0;
+}
+
+void ClearNativeTraceCursorBinding(void* converter) noexcept {
+    if (g_nativeTraceCursorBindingConverter.load(std::memory_order_acquire) != converter) {
+        return;
+    }
+    g_nativeTraceCursorBindingConverter.store(nullptr, std::memory_order_release);
+    g_nativeTraceCursorBindingAddress.store(0, std::memory_order_relaxed);
 }
 
 std::wstring NativeTraceRawBytesText(const NativeTraceRawBytes& snapshot) {
@@ -3022,6 +3052,9 @@ AppleOSStatus __cdecl HookV2AudioConverterSetProperty(void* converter,
     const bool cursorTargetChangedDuringCall =
         captureCursorTarget && !NativeTraceRawBytesEqual(
             cursorTargetBefore, cursorTargetAfter);
+    if (captureCursorTarget && result == 0) {
+        PublishNativeTraceCursorBinding(converter, cursorTargetAddress);
+    }
     if (serializedCursorUpdate && result == 0) {
         g_nativeP0Puller.ResumeAfterCursorProperty(converter);
     }
@@ -3330,6 +3363,15 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
     const auto p0TraceCall = p0TraceSlot
         ? p0TraceSlot->fillCalls.fetch_add(1, std::memory_order_relaxed) + 1 : 0;
     const auto requestedPackets = outputPackets ? *outputPackets : 0u;
+    const auto cursorTargetAddress = nativeTrace
+        ? FindNativeTraceCursorBinding(converter) : 0;
+    const auto cursorFillTraceCall = cursorTargetAddress != 0
+        ? g_nativeTraceCursorFillCalls.fetch_add(1, std::memory_order_relaxed) + 1
+        : 0;
+    const bool traceCursorFill = cursorFillTraceCall != 0 &&
+        (cursorFillTraceCall <= 24 ||
+         (cursorFillTraceCall <= 256 && cursorFillTraceCall % 16 == 0) ||
+         (cursorFillTraceCall > 256 && cursorFillTraceCall % 128 == 0));
     const auto resumeTraceConverter = g_resumeP0TraceConverter.load(std::memory_order_acquire);
     const auto resumeTraceUntil = g_resumeP0TraceUntilTick.load(std::memory_order_acquire);
     const bool resumeP0Trace = p0Candidate && converter == resumeTraceConverter &&
@@ -3510,12 +3552,39 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
     // Timestamp immediately before Apple's Fill call. A call already in flight
     // at click time must not qualify as post-click PCM just because it returns later.
     const auto enterQpc = (nativeTrace || resumeP0Trace || p0Candidate) ? CurrentQpc() : 0;
+    const auto cursorTargetFillBefore = traceCursorFill
+        ? CaptureNativeTraceCursorTargetAddress(cursorTargetAddress)
+        : NativeTraceRawBytes{};
     const auto result = g_v2OriginalAudioConverterFillComplexBuffer
         ? g_v2OriginalAudioConverterFillComplexBuffer(
             converter, wrapInput ? proxyInput : inputProc,
             wrapInput ? static_cast<void*>(&inputContext) : inputUserData,
             outputPackets, outputData, packetDescriptions) : -1;
     const auto producedPackets = outputPackets ? *outputPackets : 0u;
+    const auto cursorTargetFillAfter = traceCursorFill
+        ? CaptureNativeTraceCursorTargetAddress(cursorTargetAddress)
+        : NativeTraceRawBytes{};
+    const auto cursorFillReturnQpc = traceCursorFill ? CurrentQpc() : 0;
+    const bool cursorTargetChangedDuringFill =
+        cursorTargetFillBefore.valid && cursorTargetFillAfter.valid &&
+        !NativeTraceRawBytesEqual(cursorTargetFillBefore, cursorTargetFillAfter);
+    if (traceCursorFill) {
+        Log(L"native trace cursor around Fill converter=" +
+            std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
+            L" cursorFillCall=" + std::to_wstring(cursorFillTraceCall) +
+            L" fillTraceCall=" + std::to_wstring(traceCall) +
+            L" p0FillCall=" + std::to_wstring(p0TraceCall) +
+            L" cursorTargetAddress=" + std::to_wstring(cursorTargetAddress) +
+            L" requestedPackets=" + std::to_wstring(requestedPackets) +
+            L" producedPackets=" + std::to_wstring(producedPackets) +
+            L" result=" + std::to_wstring(result) +
+            L" enterQpc=" + std::to_wstring(enterQpc) +
+            L" returnQpc=" + std::to_wstring(cursorFillReturnQpc) +
+            L" cursorBefore" + NativeTraceRawBytesText(cursorTargetFillBefore) +
+            L" cursorAfter" + NativeTraceRawBytesText(cursorTargetFillAfter) +
+            L" cursorTargetChangedDuringFill=" +
+            std::to_wstring(cursorTargetChangedDuringFill ? 1 : 0));
+    }
     const auto p0NonEmptyCall =
         p0TraceSlot && producedPackets != 0
             ? p0TraceSlot->nonEmptyFillCalls.fetch_add(1, std::memory_order_relaxed) + 1
@@ -3845,6 +3914,7 @@ AppleOSStatus __cdecl HookV2AudioConverterDispose(void* converter) {
     if (trackedP0) p0DisposeLock = std::unique_lock<std::mutex>(g_p0FillMutex);
     const auto result = g_v2OriginalAudioConverterDispose
         ? g_v2OriginalAudioConverterDispose(converter) : -1;
+    ClearNativeTraceCursorBinding(converter);
     if (nativeTrace) {
         Log(L"native trace AudioConverterDispose converter=" +
             std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
