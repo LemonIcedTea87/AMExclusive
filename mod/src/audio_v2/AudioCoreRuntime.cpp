@@ -1518,8 +1518,8 @@ void AudioCoreRuntime::OnNativeClientInitialized(void* client, const wchar_t* en
     bool expectedWarmupUnused = false;
     if (nativeStartupPumpWarmupConsumed_.compare_exchange_strong(
             expectedWarmupUnused, true, std::memory_order_acq_rel,
-            std::memory_order_relaxed)) {
-        nativeStartupPumpWarmupReady_.store(false, std::memory_order_release);
+            std::memory_order_relaxed) &&
+        !nativeStartupPumpWarmupReady_.load(std::memory_order_acquire)) {
         nativeStartupPumpWarmupConverter_.store(nullptr, std::memory_order_release);
         nativeStartupPumpWarmupDeadlineTick_.store(
             GetTickCount64() + kNativeStartupWarmupTimeoutMs,
@@ -1536,7 +1536,6 @@ void AudioCoreRuntime::OnNativeClientInitialized(void* client, const wchar_t* en
 
 void AudioCoreRuntime::OnP0CursorSet(void* converter) noexcept {
     if (!UiEnabled() || !converter ||
-        !nativeStartupPumpWarmupActive_.load(std::memory_order_acquire) ||
         boundConverter_.load(std::memory_order_acquire) != converter) {
         return;
     }
@@ -1548,6 +1547,8 @@ void AudioCoreRuntime::OnP0CursorSet(void* converter) noexcept {
         return;
     }
 
+    // Remember a cursor that arrived before the first native client Initialize
+    // too; in that case there is no startup pre-roll left to slow down.
     nativeStartupPumpWarmupConverter_.store(converter, std::memory_order_release);
     nativeStartupPumpWarmupReady_.store(true, std::memory_order_release);
 }
