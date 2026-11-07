@@ -3160,6 +3160,10 @@ AppleOSStatus __cdecl HookV2AudioConverterSetProperty(void* converter,
             L" trigger=cursor-set epoch=" + std::to_wstring(p0TraceEpoch) +
             L" qpc=" + std::to_wstring(propertyQpcReturn));
     }
+    if (cursorProperty && result == 0 &&
+        g_audioCoreRuntime.IsP0Converter(converter)) {
+        g_audioCoreRuntime.OnP0CursorSet(converter);
+    }
     if (nativeTrace &&
         g_nativeTracePropertyCalls.fetch_add(1, std::memory_order_relaxed) < 256) {
         Log(L"native trace AudioConverterSetProperty converter=" +

@@ -23,6 +23,11 @@ constexpr std::uint32_t kReferenceTimePerSecond = 10000000u;
 // observed cold-start burst without making the decoder callback wait.
 constexpr std::size_t kProductionQueueCapacity = 256;
 
+// Experimental cold-start probe: advance the native scheduler at 10% speed
+// until the first bound ALAC/QLAC cursor is published, or fall back after 5 s.
+constexpr std::uint32_t kNativeStartupWarmupPeriodMs = 100;
+constexpr ULONGLONG kNativeStartupWarmupTimeoutMs = 5000;
+
 constexpr std::uint64_t NativePumpLowWaterFrames(std::uint32_t sampleRate) noexcept {
     return (static_cast<std::uint64_t>(sampleRate) * 3u) / 10u;
 }
@@ -109,6 +114,11 @@ bool AudioCoreRuntime::Start(const AudioCoreRuntimeCallbacks& callbacks) noexcep
     lastProducedPackets_.store(0, std::memory_order_release);
     nativePumpSampleRate_.store(0, std::memory_order_release);
     nativePumpBufferedFrames_.store(0, std::memory_order_release);
+    nativeStartupPumpWarmupConsumed_.store(false, std::memory_order_release);
+    nativeStartupPumpWarmupActive_.store(false, std::memory_order_release);
+    nativeStartupPumpWarmupReady_.store(false, std::memory_order_release);
+    nativeStartupPumpWarmupDeadlineTick_.store(0, std::memory_order_release);
+    nativeStartupPumpWarmupConverter_.store(nullptr, std::memory_order_release);
     userPauseIntent_ = false;
     resumePrebufferPending_ = false;
     resumeProducerPending_ = false;
@@ -1504,7 +1514,42 @@ void AudioCoreRuntime::OnNativeClientInitialized(void* client, const wchar_t* en
     nativeInitialized_ = true;
     nativeStarted_ = false;
     nativeEndpoint_ = endpoint ? endpoint : L"";
+
+    bool expectedWarmupUnused = false;
+    if (nativeStartupPumpWarmupConsumed_.compare_exchange_strong(
+            expectedWarmupUnused, true, std::memory_order_acq_rel,
+            std::memory_order_relaxed)) {
+        nativeStartupPumpWarmupReady_.store(false, std::memory_order_release);
+        nativeStartupPumpWarmupConverter_.store(nullptr, std::memory_order_release);
+        nativeStartupPumpWarmupDeadlineTick_.store(
+            GetTickCount64() + kNativeStartupWarmupTimeoutMs,
+            std::memory_order_release);
+        nativeStartupPumpWarmupActive_.store(true, std::memory_order_release);
+        if (callbacks_.onDiagnostic) {
+            callbacks_.onDiagnostic(
+                callbacks_.context,
+                L"audio core v2 cold-start pump warmup armed periodMs=100 timeoutMs=5000");
+        }
+    }
     Wake();
+}
+
+void AudioCoreRuntime::OnP0CursorSet(void* converter) noexcept {
+    if (!UiEnabled() || !converter ||
+        !nativeStartupPumpWarmupActive_.load(std::memory_order_acquire) ||
+        boundConverter_.load(std::memory_order_acquire) != converter) {
+        return;
+    }
+
+    ConverterRegistrationSnapshot snapshot{};
+    if (!registry_.Snapshot(converter, snapshot) ||
+        (snapshot.registration.encodedFormat != kAlac &&
+         snapshot.registration.encodedFormat != kQlac)) {
+        return;
+    }
+
+    nativeStartupPumpWarmupConverter_.store(converter, std::memory_order_release);
+    nativeStartupPumpWarmupReady_.store(true, std::memory_order_release);
 }
 
 void AudioCoreRuntime::OnNativeClientStarted(void* client, HRESULT result) noexcept {
@@ -2883,14 +2928,45 @@ bool AudioCoreRuntime::BuildFormat(const ConverterRegistrationSnapshot& snapshot
     return IsValidFormat(output);
 }
 
-std::uint32_t AudioCoreRuntime::NativePumpPeriodMs() const noexcept {
+std::uint32_t AudioCoreRuntime::NativePumpPeriodMs() noexcept {
     constexpr std::uint32_t kNominalMs = 10;
     constexpr std::uint32_t kCatchUpMs = 9;
     constexpr std::uint32_t kBackOffMs = 11;
 
+    if (!UiEnabled()) return kNominalMs;
+
+    if (nativeStartupPumpWarmupActive_.load(std::memory_order_acquire)) {
+        const bool ready =
+            nativeStartupPumpWarmupReady_.load(std::memory_order_acquire);
+        const auto deadline =
+            nativeStartupPumpWarmupDeadlineTick_.load(std::memory_order_acquire);
+        const auto now = GetTickCount64();
+        if (!ready && deadline != 0 && now < deadline) {
+            return kNativeStartupWarmupPeriodMs;
+        }
+
+        if (nativeStartupPumpWarmupActive_.exchange(
+                false, std::memory_order_acq_rel)) {
+            if (callbacks_.onDiagnostic) {
+                if (ready) {
+                    const auto converter =
+                        nativeStartupPumpWarmupConverter_.load(std::memory_order_acquire);
+                    const std::wstring diagnostic =
+                        L"audio core v2 cold-start pump warmup released by bound ALAC/QLAC cursor converter=" +
+                        std::to_wstring(reinterpret_cast<std::uintptr_t>(converter));
+                    callbacks_.onDiagnostic(callbacks_.context, diagnostic.c_str());
+                } else {
+                    callbacks_.onDiagnostic(
+                        callbacks_.context,
+                        L"audio core v2 cold-start pump warmup timed out; restoring normal period");
+                }
+            }
+        }
+    }
+
     const auto sampleRate = nativePumpSampleRate_.load(std::memory_order_acquire);
     const auto bufferedFrames = nativePumpBufferedFrames_.load(std::memory_order_acquire);
-    if (!UiEnabled() || sampleRate < 8000 || sampleRate > 768000) return kNominalMs;
+    if (sampleRate < 8000 || sampleRate > 768000) return kNominalMs;
 
     // Keep a modest load-jitter reservoir without returning to the old 1+ s
     // pause-latency buffer. 300-500 ms gives the producer substantially more

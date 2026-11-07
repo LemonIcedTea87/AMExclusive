@@ -210,6 +210,9 @@ public:
                                    AUDCLNT_SHAREMODE shareMode, DWORD flags,
                                    const WAVEFORMATEX* format, HRESULT result) noexcept;
     void OnNativeClientStarted(void* client, HRESULT result) noexcept;
+    // Release the one-time cold-start pump warmup only when the exact bound
+    // ALAC/QLAC decoder receives its source cursor.
+    void OnP0CursorSet(void* converter) noexcept;
     // Called before NativeRenderGateProxy stops its software pump. For a
     // natural streaming boundary it briefly keeps Apple's existing scheduler
     // alive so a pending decoder tail can reach the normal zero-packet EOF
@@ -278,7 +281,7 @@ public:
     // Lock-free feedback for the software native-render pump. The worker
     // publishes queue depth; the pump only reads atomics and never touches the
     // coordinator/SPSC lifetime directly.
-    std::uint32_t NativePumpPeriodMs() const noexcept;
+    std::uint32_t NativePumpPeriodMs() noexcept;
 
     AudioCoreRuntimeStats Stats() const noexcept;
     const AudioCoreCoordinator& Coordinator() const noexcept { return coordinator_; }
@@ -532,6 +535,13 @@ private:
     std::atomic<std::uint32_t> lastProducedPackets_{};
     std::atomic<std::uint32_t> nativePumpSampleRate_{};
     std::atomic<std::uint64_t> nativePumpBufferedFrames_{};
+    // Experimental, process-first-playback slowdown. It is bounded by a timeout
+    // and released by the first bound ALAC/QLAC cursor; subsequent tracks are untouched.
+    std::atomic<bool> nativeStartupPumpWarmupConsumed_{};
+    std::atomic<bool> nativeStartupPumpWarmupActive_{};
+    std::atomic<bool> nativeStartupPumpWarmupReady_{};
+    std::atomic<ULONGLONG> nativeStartupPumpWarmupDeadlineTick_{};
+    std::atomic<void*> nativeStartupPumpWarmupConverter_{};
 };
 
 } // namespace ammod::audio_v2
