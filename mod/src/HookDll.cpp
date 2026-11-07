@@ -3953,10 +3953,8 @@ AppleOSStatus __cdecl HookV2AudioConverterReset(void* converter) {
             return agentBase && value >= agentBase ? value - agentBase : 0;
         };
         localSeekReset = count >= 3 &&
-            rva(resetStack[0]) == ammod::apple_private::agent_stack::kLocalSeekResetFrame0 &&
-            rva(resetStack[1]) == ammod::apple_private::agent_stack::kLocalSeekResetFrame1 &&
-            (rva(resetStack[2]) == ammod::apple_private::agent_stack::kLocalSeekResetFrame2[0] ||
-             rva(resetStack[2]) == ammod::apple_private::agent_stack::kLocalSeekResetFrame2[1]);
+            ammod::apple_private::agent_stack::MatchesLocalSeekReset(
+                rva(resetStack[0]), rva(resetStack[1]), rva(resetStack[2]));
     }
     const bool trackedP0 = g_nativeP0Puller.Tracks(converter);
     const bool registeredP0Before = nativeTrace &&

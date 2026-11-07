@@ -39,6 +39,11 @@ SimpleFactory originalCreate{};
 using TreeApply = std::int32_t(__cdecl*)(void*, void*, void**, void*);
 TreeApply originalTreeApply{};
 std::uintptr_t mediaBase{};
+// Selected CoreMedia build fingerprint, written before any private hook is enabled.
+std::uintptr_t simpleApplyRva{};
+std::uintptr_t treeApplyRva{};
+std::uint32_t strictConstructorPriority{};
+wchar_t const* verifiedCoreMediaBuild{};
 double(__cdecl* maxSampleRate)(void*){};
 void*(__cdecl* arrayCreate)(void*, const void**, std::int64_t, const void*){};
 const void*(__cdecl* arrayValue)(const void*, std::int64_t){};
@@ -216,7 +221,7 @@ std::int32_t __cdecl Create(void* allocator, void* name, std::uint32_t priority,
     // Unexpected ABI/callback shape fails the strict request, never returns the
     // old codec-only filter and silently claims highest-quality admission.
     if (!output || !context || !callbacks ||
-        priority != ammod::apple_private::core_media_filter::kStrictConstructorPriority ||
+        priority != strictConstructorPriority ||
         callbacks->reset || callbacks->visit || !callbacks->accept || callbacks->fallbackCompare) {
         return -1;
     }
@@ -322,11 +327,11 @@ bool CollectStrict(void* filter, std::vector<void*>& strict, unsigned depth = 0)
         !TryReadWord(methods, offsets::kTreeApplySlot, treeApply)) {
         return false;
     }
-    if (simpleApply == mediaBase + offsets::kSimpleApplyRva) {
+    if (simpleApply == mediaBase + simpleApplyRva) {
         std::uintptr_t predicate{};
         if (!TryReadWord(filter, offsets::kSimplePredicate, predicate)) return false;
         if (predicate == reinterpret_cast<std::uintptr_t>(&Accept)) strict.push_back(filter);
-    } else if (treeApply == mediaBase + offsets::kTreeApplyRva) {
+    } else if (treeApply == mediaBase + treeApplyRva) {
         std::uintptr_t childrenWord{};
         std::uintptr_t fallbackWord{};
         if (!TryReadWord(filter, offsets::kTreeChildren, childrenWord) ||
@@ -442,26 +447,40 @@ bool ImageMatchesVerifiedBuild(HMODULE media) {
     if (dos->e_magic != IMAGE_DOS_SIGNATURE || dos->e_lfanew <= 0) return false;
     const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(base + dos->e_lfanew);
     if (nt->Signature != IMAGE_NT_SIGNATURE ||
-        nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
-        return false;
-    }
+        nt->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) return false;
     const std::uintptr_t imageSize = nt->OptionalHeader.SizeOfImage;
     const auto matches = [&](std::uintptr_t rva, const auto& prologue) {
         return rva + prologue.size() <= imageSize &&
                std::memcmp(base + rva, prologue.data(), prologue.size()) == 0;
     };
-    const bool ok = matches(offsets::kSimpleApplyRva, offsets::kSimpleApplyPrologue) &&
-                    matches(offsets::kTreeApplyRva, offsets::kTreeApplyPrologue);
-    if (!ok && writeLog) {
-        wchar_t text[192]{};
-        std::swprintf(text, std::size(text),
-                      L"Highest ALAC quality filter hook disabled: CoreMedia image does not "
-                      L"match the verified build (timestamp=0x%08X sizeOfImage=0x%08X)",
-                      static_cast<unsigned>(nt->FileHeader.TimeDateStamp),
-                      static_cast<unsigned>(nt->OptionalHeader.SizeOfImage));
-        writeLog(text);
+    // Package revision is reference metadata; loaded CoreMedia bytes authorize the RVA.
+    for (const auto& build : offsets::kCoreMediaBuilds) {
+        if (!matches(build.simpleApplyRva, build.simpleApplyPrologue) ||
+            !matches(build.treeApplyRva, build.treeApplyPrologue)) continue;
+        simpleApplyRva = build.simpleApplyRva;
+        treeApplyRva = build.treeApplyRva;
+        strictConstructorPriority = build.strictConstructorPriority;
+        verifiedCoreMediaBuild = build.appleMusicFileVersion;
+        if (writeLog) {
+            wchar_t message[288]{};
+            std::swprintf(message, std::size(message),
+                L"Highest ALAC quality filter CoreMedia fingerprint matched: %s (reference package %s, simpleApply=0x%IX, treeApply=0x%IX)",
+                build.appleMusicFileVersion, build.packageVersion,
+                static_cast<std::uintptr_t>(build.simpleApplyRva),
+                static_cast<std::uintptr_t>(build.treeApplyRva));
+            writeLog(message);
+        }
+        return true;
     }
-    return ok;
+    if (writeLog) {
+        wchar_t message[192]{};
+        std::swprintf(message, std::size(message),
+            L"Highest ALAC quality filter hook disabled: CoreMedia image does not match a verified build (timestamp=0x%08X sizeOfImage=0x%08X)",
+            static_cast<unsigned>(nt->FileHeader.TimeDateStamp),
+            static_cast<unsigned>(nt->OptionalHeader.SizeOfImage));
+        writeLog(message);
+    }
+    return false;
 }
 
 
@@ -754,13 +773,17 @@ bool Install(HMODULE media, HMODULE foundation, LogFunction log) {
     const auto status = MH_EnableHook(target);
     if (status != MH_OK && status != MH_ERROR_ENABLED) return false;
     mediaBase = reinterpret_cast<std::uintptr_t>(media);
-    auto* treeTarget = reinterpret_cast<void*>(mediaBase +
-        ammod::apple_private::core_media_filter::kTreeApplyRva);
+    auto* treeTarget = reinterpret_cast<void*>(mediaBase + treeApplyRva);
     if (!originalTreeApply && MH_CreateHook(treeTarget, reinterpret_cast<void*>(ApplyTree),
         reinterpret_cast<void**>(&originalTreeApply)) != MH_OK) return false;
     const auto treeStatus = MH_EnableHook(treeTarget);
     installed = treeStatus == MH_OK || treeStatus == MH_ERROR_ENABLED;
-    if (installed && writeLog) writeLog(L"Highest ALAC quality filter hook ready");
+    if (installed && writeLog) {
+        std::wstring message = L"Highest ALAC quality filter hook ready (CoreMedia ";
+        message += verifiedCoreMediaBuild ? verifiedCoreMediaBuild : L"unknown";
+        message += L")";
+        writeLog(message);
+    }
     return installed;
 }
 
