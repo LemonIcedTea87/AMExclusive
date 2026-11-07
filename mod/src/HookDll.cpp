@@ -1187,8 +1187,7 @@ std::uintptr_t NativeTraceCursorTargetAddress(const void* propertyData,
     // The private kCursor property is pointer-sized on the verified x64 build.
     if (!propertyData || dataSize != sizeof(std::uint64_t)) return 0;
     std::uint64_t address{};
-    if (!CopyNativeTraceScalar(propertyData, dataSize, address) || address < 0x10000 ||
-        address > static_cast<std::uint64_t>(UINTPTR_MAX)) {
+    if (!CopyNativeTraceScalar(propertyData, dataSize, address) || address < 0x10000) {
         return 0;
     }
     return static_cast<std::uintptr_t>(address);
@@ -3008,8 +3007,6 @@ AppleOSStatus __cdecl HookV2AudioConverterSetProperty(void* converter,
     const auto propertyDataPrefix = nativeTrace && cursorProperty
         ? CaptureNativeTraceRawBytes(data, dataSize) : NativeTraceRawBytes{};
     const bool captureCursorTarget = nativeTrace && cursorProperty;
-    const bool trackedP0Cursor = captureCursorTarget &&
-        g_audioCoreRuntime.IsP0Converter(converter);
     const auto cursorTargetAddress = captureCursorTarget
         ? NativeTraceCursorTargetAddress(data, dataSize) : 0;
     const auto cursorTargetBefore = CaptureNativeTraceCursorTargetAddress(
