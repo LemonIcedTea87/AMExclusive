@@ -535,8 +535,8 @@ private:
     std::atomic<std::uint32_t> lastProducedPackets_{};
     std::atomic<std::uint32_t> nativePumpSampleRate_{};
     std::atomic<std::uint64_t> nativePumpBufferedFrames_{};
-    // Experimental, process-first-playback slowdown. It is bounded by a timeout
-    // and released by the first bound ALAC/QLAC cursor; subsequent tracks are untouched.
+    // Experimental, process-first-playback render-event hold. It is bounded by a
+    // timeout and released by the first bound ALAC/QLAC cursor; later tracks are untouched.
     std::atomic<bool> nativeStartupPumpWarmupConsumed_{};
     std::atomic<bool> nativeStartupPumpWarmupActive_{};
     std::atomic<bool> nativeStartupPumpWarmupReady_{};

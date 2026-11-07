@@ -900,9 +900,12 @@ DWORD WINAPI NativeAudioClientProxy::PumpThreadThunk(void* context) noexcept {
         const auto requestedMs = self->callbacks_.pumpPeriodMs
             ? self->callbacks_.pumpPeriodMs(self->callbacks_.context)
             : 10u;
-        // NativePumpPeriodMs normally returns 9-11 ms. The bounded cold-start
-        // experiment may request 500 ms to strongly limit the first scheduler pre-roll.
-        const auto periodMs = std::clamp<std::uint32_t>(requestedMs, 8u, 600u);
+        // A zero request is an experimental startup hold: poll for release without
+        // advancing the software clock or signalling another Apple render event.
+        const bool holdRenderEvents = requestedMs == 0u;
+        const auto periodMs = holdRenderEvents
+            ? 50u
+            : std::clamp<std::uint32_t>(requestedMs, 8u, 600u);
         LARGE_INTEGER dueTime{};
         dueTime.QuadPart = -static_cast<LONGLONG>(periodMs) * 10'000;
         if (!SetWaitableTimer(timer, &dueTime, 0, nullptr, nullptr, FALSE)) break;
@@ -911,6 +914,7 @@ DWORD WINAPI NativeAudioClientProxy::PumpThreadThunk(void* context) noexcept {
             ARRAYSIZE(waitHandles), waitHandles, FALSE, INFINITE);
         if (waitResult == WAIT_OBJECT_0) break;
         if (waitResult != WAIT_OBJECT_0 + 1) break;
+        if (holdRenderEvents) continue;
         self->softwareBuffer_->Tick();
         const auto eventHandle = self->pumpEvent_.load(std::memory_order_acquire);
         if (eventHandle) SetEvent(eventHandle);

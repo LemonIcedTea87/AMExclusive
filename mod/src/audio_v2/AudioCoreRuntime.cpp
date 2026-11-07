@@ -23,9 +23,8 @@ constexpr std::uint32_t kReferenceTimePerSecond = 10000000u;
 // observed cold-start burst without making the decoder callback wait.
 constexpr std::size_t kProductionQueueCapacity = 256;
 
-// Experimental cold-start probe: advance one 10 ms scheduler quantum every 500 ms
-// until the first bound ALAC/QLAC cursor is published, or fall back after 5 s.
-constexpr std::uint32_t kNativeStartupWarmupPeriodMs = 500;
+// Experimental cold-start gate: hold native render events until the first bound
+// ALAC/QLAC cursor is published, or resume automatically after 5 s.
 constexpr ULONGLONG kNativeStartupWarmupTimeoutMs = 5000;
 
 constexpr std::uint64_t NativePumpLowWaterFrames(std::uint32_t sampleRate) noexcept {
@@ -1528,7 +1527,7 @@ void AudioCoreRuntime::OnNativeClientInitialized(void* client, const wchar_t* en
         if (callbacks_.onDiagnostic) {
             callbacks_.onDiagnostic(
                 callbacks_.context,
-                L"audio core v2 cold-start pump warmup armed periodMs=500 timeoutMs=5000");
+                L"audio core v2 cold-start pump warmup armed pumpHeld=1 pollMs=50 timeoutMs=5000");
         }
     }
     Wake();
@@ -2943,7 +2942,10 @@ std::uint32_t AudioCoreRuntime::NativePumpPeriodMs() noexcept {
             nativeStartupPumpWarmupDeadlineTick_.load(std::memory_order_acquire);
         const auto now = GetTickCount64();
         if (!ready && deadline != 0 && now < deadline) {
-            return kNativeStartupWarmupPeriodMs;
+            // Zero is the NativeRenderGateProxy sentinel for holding render events.
+            // Its worker polls at 50 ms but does not tick the software clock or signal
+            // Apple's render event until the exact bound ALAC/QLAC cursor is ready.
+            return 0;
         }
 
         if (nativeStartupPumpWarmupActive_.exchange(
