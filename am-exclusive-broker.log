@@ -1,28 +1,128 @@
-2026-11-07T17:21:58.881 uptimeMs=2296609 pid=24652 tid=4820 companion started pid=24652 persistedIntent=1 hardwareBufferMs=20 allowResampling=0
-2026-11-07T17:21:58.892 uptimeMs=2296625 pid=24652 tid=6700 companion bound to AppleMusic host pid=14188
-2026-11-07T17:21:58.899 uptimeMs=2296625 pid=24652 tid=6700 watcher UI injection pid=14188 ok=1
-2026-11-07T17:21:58.915 uptimeMs=2296640 pid=24652 tid=6700 watcher Agent injection pid=22152 ok=1
-2026-11-07T17:21:58.939 uptimeMs=2296671 pid=24652 tid=4820 accepted pipe client
-2026-11-07T17:21:58.939 uptimeMs=2296671 pid=24652 tid=25372 hello role=2 pid=14188
-2026-11-07T17:21:58.939 uptimeMs=2296671 pid=24652 tid=25372 write hello ack pid=14188
-2026-11-07T17:21:58.942 uptimeMs=2296671 pid=24652 tid=25372 hello complete pid=14188
-2026-11-07T17:21:59.000 uptimeMs=2296718 pid=24652 tid=4820 accepted pipe client
-2026-11-07T17:21:59.000 uptimeMs=2296718 pid=24652 tid=24920 hello role=3 pid=22152
-2026-11-07T17:21:59.000 uptimeMs=2296718 pid=24652 tid=24920 write hello ack pid=22152
-2026-11-07T17:21:59.000 uptimeMs=2296718 pid=24652 tid=24920 hello complete pid=22152
-2026-11-07T17:21:59.003 uptimeMs=2296734 pid=24652 tid=25716 async broadcast begin pid=22152
-2026-11-07T17:21:59.003 uptimeMs=2296734 pid=24652 tid=1288 async broadcast begin pid=14188
-2026-11-07T17:21:59.003 uptimeMs=2296734 pid=24652 tid=25716 async broadcast complete pid=22152 ok=1
-2026-11-07T17:21:59.003 uptimeMs=2296734 pid=24652 tid=1288 async broadcast complete pid=14188 ok=1
-2026-11-07T17:22:09.838 uptimeMs=2307562 pid=24652 tid=24920 handle type=5 role=3
-2026-11-07T17:22:09.838 uptimeMs=2307562 pid=24652 tid=24920 source reply begin pid=22152
-2026-11-07T17:22:09.838 uptimeMs=2307562 pid=24652 tid=24920 source reply complete pid=22152 ok=1
-2026-11-07T17:22:09.839 uptimeMs=2307562 pid=24652 tid=6996 async broadcast begin pid=14188
-2026-11-07T17:22:09.839 uptimeMs=2307562 pid=24652 tid=6996 async broadcast complete pid=14188 ok=1
-2026-11-07T17:22:10.981 uptimeMs=2308703 pid=24652 tid=24920 handle type=5 role=3
-2026-11-07T17:22:10.981 uptimeMs=2308703 pid=24652 tid=24920 source reply begin pid=22152
-2026-11-07T17:22:10.982 uptimeMs=2308703 pid=24652 tid=24920 source reply complete pid=22152 ok=1
-2026-11-07T17:22:10.982 uptimeMs=2308703 pid=24652 tid=25340 async broadcast begin pid=14188
-2026-11-07T17:22:10.982 uptimeMs=2308703 pid=24652 tid=25340 async broadcast complete pid=14188 ok=1
-2026-11-07T17:22:33.758 uptimeMs=2331484 pid=24652 tid=6700 companion exit: bound AppleMusic host terminated pid=14188
-2026-11-07T17:22:33.800 uptimeMs=2331531 pid=24652 tid=4820 companion shutdown complete
+2026-11-07T17:32:53.826 uptimeMs=2951546 pid=21344 tid=2320 companion started pid=21344 persistedIntent=1 hardwareBufferMs=20 allowResampling=0
+2026-11-07T17:32:53.838 uptimeMs=2951562 pid=21344 tid=25444 companion bound to AppleMusic host pid=2884
+2026-11-07T17:32:53.844 uptimeMs=2951578 pid=21344 tid=25444 watcher UI injection pid=2884 ok=1
+2026-11-07T17:32:53.859 uptimeMs=2951578 pid=21344 tid=25444 watcher Agent injection pid=21004 ok=1
+2026-11-07T17:32:53.886 uptimeMs=2951609 pid=21344 tid=2320 accepted pipe client
+2026-11-07T17:32:53.886 uptimeMs=2951609 pid=21344 tid=24944 hello role=2 pid=2884
+2026-11-07T17:32:53.886 uptimeMs=2951609 pid=21344 tid=24944 write hello ack pid=2884
+2026-11-07T17:32:53.889 uptimeMs=2951609 pid=21344 tid=24944 hello complete pid=2884
+2026-11-07T17:32:53.944 uptimeMs=2951671 pid=21344 tid=2320 accepted pipe client
+2026-11-07T17:32:53.944 uptimeMs=2951671 pid=21344 tid=24024 hello role=3 pid=21004
+2026-11-07T17:32:53.946 uptimeMs=2951671 pid=21344 tid=24024 write hello ack pid=21004
+2026-11-07T17:32:53.946 uptimeMs=2951671 pid=21344 tid=24024 hello complete pid=21004
+2026-11-07T17:32:53.947 uptimeMs=2951671 pid=21344 tid=14568 async broadcast begin pid=2884
+2026-11-07T17:32:53.947 uptimeMs=2951671 pid=21344 tid=2264 async broadcast begin pid=21004
+2026-11-07T17:32:53.947 uptimeMs=2951671 pid=21344 tid=14568 async broadcast complete pid=2884 ok=1
+2026-11-07T17:32:53.947 uptimeMs=2951671 pid=21344 tid=2264 async broadcast complete pid=21004 ok=1
+2026-11-07T17:33:25.796 uptimeMs=2983515 pid=21344 tid=24024 handle type=5 role=3
+2026-11-07T17:33:25.796 uptimeMs=2983515 pid=21344 tid=24024 source reply begin pid=21004
+2026-11-07T17:33:25.796 uptimeMs=2983515 pid=21344 tid=24024 source reply complete pid=21004 ok=1
+2026-11-07T17:33:25.796 uptimeMs=2983515 pid=21344 tid=25264 async broadcast begin pid=2884
+2026-11-07T17:33:25.798 uptimeMs=2983531 pid=21344 tid=25264 async broadcast complete pid=2884 ok=1
+2026-11-07T17:33:26.811 uptimeMs=2984531 pid=21344 tid=24024 handle type=5 role=3
+2026-11-07T17:33:26.811 uptimeMs=2984531 pid=21344 tid=24024 source reply begin pid=21004
+2026-11-07T17:33:26.812 uptimeMs=2984531 pid=21344 tid=24024 source reply complete pid=21004 ok=1
+2026-11-07T17:33:26.812 uptimeMs=2984531 pid=21344 tid=13196 async broadcast begin pid=2884
+2026-11-07T17:33:26.813 uptimeMs=2984531 pid=21344 tid=13196 async broadcast complete pid=2884 ok=1
+2026-11-07T17:33:47.551 uptimeMs=3005281 pid=21344 tid=24944 handle type=9 role=2
+2026-11-07T17:33:47.551 uptimeMs=3005281 pid=21344 tid=24944 role relay pid=21004 role=3 ok=1
+2026-11-07T17:33:50.312 uptimeMs=3008031 pid=21344 tid=24024 handle type=5 role=3
+2026-11-07T17:33:50.312 uptimeMs=3008031 pid=21344 tid=24024 source reply begin pid=21004
+2026-11-07T17:33:50.312 uptimeMs=3008031 pid=21344 tid=24024 source reply complete pid=21004 ok=1
+2026-11-07T17:33:50.312 uptimeMs=3008031 pid=21344 tid=25636 async broadcast begin pid=2884
+2026-11-07T17:33:50.312 uptimeMs=3008031 pid=21344 tid=25636 async broadcast complete pid=2884 ok=1
+2026-11-07T17:33:50.408 uptimeMs=3008140 pid=21344 tid=24024 handle type=5 role=3
+2026-11-07T17:33:50.408 uptimeMs=3008140 pid=21344 tid=24024 source reply begin pid=21004
+2026-11-07T17:33:50.410 uptimeMs=3008140 pid=21344 tid=24024 source reply complete pid=21004 ok=1
+2026-11-07T17:33:50.410 uptimeMs=3008140 pid=21344 tid=24992 async broadcast begin pid=2884
+2026-11-07T17:33:50.410 uptimeMs=3008140 pid=21344 tid=24992 async broadcast complete pid=2884 ok=1
+2026-11-07T17:34:14.352 uptimeMs=3032078 pid=21344 tid=25444 companion exit: bound AppleMusic host terminated pid=2884
+2026-11-07T17:34:14.363 uptimeMs=3032093 pid=21344 tid=2320 companion shutdown complete
+2026-11-07T17:34:15.387 uptimeMs=3033109 pid=15792 tid=5180 companion started pid=15792 persistedIntent=1 hardwareBufferMs=20 allowResampling=0
+2026-11-07T17:34:15.397 uptimeMs=3033125 pid=15792 tid=25768 companion bound to AppleMusic host pid=23152
+2026-11-07T17:34:15.403 uptimeMs=3033125 pid=15792 tid=25768 watcher UI injection pid=23152 ok=1
+2026-11-07T17:34:15.440 uptimeMs=3033171 pid=15792 tid=5180 accepted pipe client
+2026-11-07T17:34:15.440 uptimeMs=3033171 pid=15792 tid=6596 hello role=2 pid=23152
+2026-11-07T17:34:15.442 uptimeMs=3033171 pid=15792 tid=6596 write hello ack pid=23152
+2026-11-07T17:34:15.443 uptimeMs=3033171 pid=15792 tid=6596 hello complete pid=23152
+2026-11-07T17:34:15.944 uptimeMs=3033671 pid=15792 tid=25768 watcher Agent injection pid=9788 ok=1
+2026-11-07T17:34:16.005 uptimeMs=3033734 pid=15792 tid=5180 accepted pipe client
+2026-11-07T17:34:16.005 uptimeMs=3033734 pid=15792 tid=25832 hello role=3 pid=9788
+2026-11-07T17:34:16.006 uptimeMs=3033734 pid=15792 tid=25832 write hello ack pid=9788
+2026-11-07T17:34:16.008 uptimeMs=3033734 pid=15792 tid=25832 hello complete pid=9788
+2026-11-07T17:34:16.008 uptimeMs=3033734 pid=15792 tid=25012 async broadcast begin pid=23152
+2026-11-07T17:34:16.008 uptimeMs=3033734 pid=15792 tid=4800 async broadcast begin pid=9788
+2026-11-07T17:34:16.008 uptimeMs=3033734 pid=15792 tid=25012 async broadcast complete pid=23152 ok=1
+2026-11-07T17:34:16.008 uptimeMs=3033734 pid=15792 tid=4800 async broadcast complete pid=9788 ok=1
+2026-11-07T17:34:16.731 uptimeMs=3034453 pid=15792 tid=5180 accepted pipe client
+2026-11-07T17:34:16.731 uptimeMs=3034453 pid=15792 tid=20036 hello role=3 pid=21004
+2026-11-07T17:34:16.732 uptimeMs=3034453 pid=15792 tid=20036 write hello ack pid=21004
+2026-11-07T17:34:16.732 uptimeMs=3034453 pid=15792 tid=20036 hello complete pid=21004
+2026-11-07T17:34:16.734 uptimeMs=3034453 pid=15792 tid=25984 async broadcast begin pid=23152
+2026-11-07T17:34:16.734 uptimeMs=3034453 pid=15792 tid=25976 async broadcast begin pid=21004
+2026-11-07T17:34:16.734 uptimeMs=3034453 pid=15792 tid=25984 async broadcast complete pid=23152 ok=1
+2026-11-07T17:34:16.734 uptimeMs=3034453 pid=15792 tid=25976 async broadcast complete pid=21004 ok=1
+2026-11-07T17:34:17.770 uptimeMs=3035500 pid=15792 tid=5180 accepted pipe client
+2026-11-07T17:34:17.770 uptimeMs=3035500 pid=15792 tid=26536 hello role=3 pid=9788
+2026-11-07T17:34:17.771 uptimeMs=3035500 pid=15792 tid=26536 write hello ack pid=9788
+2026-11-07T17:34:17.772 uptimeMs=3035500 pid=15792 tid=26536 hello complete pid=9788
+2026-11-07T17:34:17.772 uptimeMs=3035500 pid=15792 tid=21656 async broadcast begin pid=23152
+2026-11-07T17:34:17.772 uptimeMs=3035500 pid=15792 tid=21656 async broadcast complete pid=23152 ok=1
+2026-11-07T17:34:17.772 uptimeMs=3035500 pid=15792 tid=424 async broadcast begin pid=9788
+2026-11-07T17:34:17.772 uptimeMs=3035500 pid=15792 tid=424 async broadcast complete pid=9788 ok=1
+2026-11-07T17:34:18.860 uptimeMs=3036593 pid=15792 tid=5180 accepted pipe client
+2026-11-07T17:34:18.860 uptimeMs=3036593 pid=15792 tid=4100 hello role=3 pid=21004
+2026-11-07T17:34:18.861 uptimeMs=3036593 pid=15792 tid=4100 write hello ack pid=21004
+2026-11-07T17:34:18.863 uptimeMs=3036593 pid=15792 tid=4100 hello complete pid=21004
+2026-11-07T17:34:18.863 uptimeMs=3036593 pid=15792 tid=9508 async broadcast begin pid=23152
+2026-11-07T17:34:18.863 uptimeMs=3036593 pid=15792 tid=25308 async broadcast begin pid=21004
+2026-11-07T17:34:18.863 uptimeMs=3036593 pid=15792 tid=9508 async broadcast complete pid=23152 ok=1
+2026-11-07T17:34:18.863 uptimeMs=3036593 pid=15792 tid=25308 async broadcast complete pid=21004 ok=1
+2026-11-07T17:34:19.944 uptimeMs=3037671 pid=15792 tid=5180 accepted pipe client
+2026-11-07T17:34:19.944 uptimeMs=3037671 pid=15792 tid=16228 hello role=3 pid=9788
+2026-11-07T17:34:19.944 uptimeMs=3037671 pid=15792 tid=16228 write hello ack pid=9788
+2026-11-07T17:34:19.948 uptimeMs=3037671 pid=15792 tid=16228 hello complete pid=9788
+2026-11-07T17:34:19.948 uptimeMs=3037671 pid=15792 tid=22096 async broadcast begin pid=23152
+2026-11-07T17:34:19.948 uptimeMs=3037671 pid=15792 tid=25916 async broadcast begin pid=9788
+2026-11-07T17:34:19.948 uptimeMs=3037671 pid=15792 tid=22096 async broadcast complete pid=23152 ok=1
+2026-11-07T17:34:19.948 uptimeMs=3037671 pid=15792 tid=25916 async broadcast complete pid=9788 ok=1
+2026-11-07T17:34:21.011 uptimeMs=3038734 pid=15792 tid=5180 accepted pipe client
+2026-11-07T17:34:21.012 uptimeMs=3038734 pid=15792 tid=452 hello role=3 pid=21004
+2026-11-07T17:34:21.012 uptimeMs=3038734 pid=15792 tid=452 write hello ack pid=21004
+2026-11-07T17:34:21.014 uptimeMs=3038734 pid=15792 tid=452 hello complete pid=21004
+2026-11-07T17:34:21.014 uptimeMs=3038734 pid=15792 tid=24960 async broadcast begin pid=23152
+2026-11-07T17:34:21.014 uptimeMs=3038734 pid=15792 tid=23996 async broadcast begin pid=21004
+2026-11-07T17:34:21.014 uptimeMs=3038734 pid=15792 tid=24960 async broadcast complete pid=23152 ok=1
+2026-11-07T17:34:21.014 uptimeMs=3038734 pid=15792 tid=23996 async broadcast complete pid=21004 ok=1
+2026-11-07T17:34:21.479 uptimeMs=3039203 pid=15792 tid=24680 async broadcast begin pid=23152
+2026-11-07T17:34:21.479 uptimeMs=3039203 pid=15792 tid=24680 async broadcast complete pid=23152 ok=1
+2026-11-07T17:34:22.098 uptimeMs=3039828 pid=15792 tid=5180 accepted pipe client
+2026-11-07T17:34:22.098 uptimeMs=3039828 pid=15792 tid=24844 hello role=3 pid=9788
+2026-11-07T17:34:22.098 uptimeMs=3039828 pid=15792 tid=24844 write hello ack pid=9788
+2026-11-07T17:34:22.098 uptimeMs=3039828 pid=15792 tid=24844 hello complete pid=9788
+2026-11-07T17:34:22.101 uptimeMs=3039828 pid=15792 tid=12096 async broadcast begin pid=23152
+2026-11-07T17:34:22.101 uptimeMs=3039828 pid=15792 tid=2380 async broadcast begin pid=9788
+2026-11-07T17:34:22.101 uptimeMs=3039828 pid=15792 tid=12096 async broadcast complete pid=23152 ok=1
+2026-11-07T17:34:22.102 uptimeMs=3039828 pid=15792 tid=2380 async broadcast complete pid=9788 ok=1
+2026-11-07T17:34:27.770 uptimeMs=3045500 pid=15792 tid=24844 handle type=5 role=3
+2026-11-07T17:34:27.771 uptimeMs=3045500 pid=15792 tid=24844 source reply begin pid=9788
+2026-11-07T17:34:27.771 uptimeMs=3045500 pid=15792 tid=24844 source reply complete pid=9788 ok=1
+2026-11-07T17:34:27.772 uptimeMs=3045500 pid=15792 tid=1052 async broadcast begin pid=23152
+2026-11-07T17:34:27.772 uptimeMs=3045500 pid=15792 tid=1052 async broadcast complete pid=23152 ok=1
+2026-11-07T17:34:28.474 uptimeMs=3046203 pid=15792 tid=24844 handle type=5 role=3
+2026-11-07T17:34:28.474 uptimeMs=3046203 pid=15792 tid=24844 source reply begin pid=9788
+2026-11-07T17:34:28.475 uptimeMs=3046203 pid=15792 tid=24844 source reply complete pid=9788 ok=1
+2026-11-07T17:34:28.475 uptimeMs=3046203 pid=15792 tid=22364 async broadcast begin pid=23152
+2026-11-07T17:34:28.475 uptimeMs=3046203 pid=15792 tid=22364 async broadcast complete pid=23152 ok=1
+2026-11-07T17:34:52.607 uptimeMs=3070328 pid=15792 tid=24844 handle type=5 role=3
+2026-11-07T17:34:52.607 uptimeMs=3070328 pid=15792 tid=24844 source reply begin pid=9788
+2026-11-07T17:34:52.608 uptimeMs=3070328 pid=15792 tid=24844 source reply complete pid=9788 ok=1
+2026-11-07T17:34:52.609 uptimeMs=3070328 pid=15792 tid=24264 async broadcast begin pid=23152
+2026-11-07T17:34:52.609 uptimeMs=3070328 pid=15792 tid=24264 async broadcast complete pid=23152 ok=1
+2026-11-07T17:34:52.620 uptimeMs=3070343 pid=15792 tid=24844 handle type=5 role=3
+2026-11-07T17:34:52.620 uptimeMs=3070343 pid=15792 tid=24844 source reply begin pid=9788
+2026-11-07T17:34:52.621 uptimeMs=3070343 pid=15792 tid=24844 source reply complete pid=9788 ok=1
+2026-11-07T17:34:52.621 uptimeMs=3070343 pid=15792 tid=4544 async broadcast begin pid=23152
+2026-11-07T17:34:52.622 uptimeMs=3070343 pid=15792 tid=4544 async broadcast complete pid=23152 ok=1
+2026-11-07T17:35:15.902 uptimeMs=3093625 pid=15792 tid=25768 companion exit: bound AppleMusic host terminated pid=23152
+2026-11-07T17:35:15.917 uptimeMs=3093640 pid=15792 tid=5180 companion shutdown complete
