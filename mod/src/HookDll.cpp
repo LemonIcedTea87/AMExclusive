@@ -3301,6 +3301,39 @@ AppleOSStatus __cdecl HookV2AudioConverterSetProperty(void* converter,
                             L" destinationResult=" + std::to_wstring(destinationResult));
                     }
                 }
+            } else if (nativeTrace && g_v2OriginalAudioConverterGetProperty) {
+                // Some internal Apple converters receive an ESDS or another
+                // non-ALAC decompression cookie before the exact ALAC P0 decoder
+                // is exposed to the exported hooks. Query their current ASBDs
+                // read-only so the early native/shadow path can be identified.
+                AudioStreamBasicDescription refreshedSource{};
+                AudioStreamBasicDescription refreshedDestination{};
+                std::uint32_t sourceSize = sizeof(refreshedSource);
+                std::uint32_t destinationSize = sizeof(refreshedDestination);
+                const auto queryEnterQpc = CurrentQpc();
+                const auto sourceResult = g_v2OriginalAudioConverterGetProperty(
+                    converter,
+                    ammod::apple_private::audio_converter_property::kCurrentInputDescription,
+                    &sourceSize, &refreshedSource);
+                const auto destinationResult = g_v2OriginalAudioConverterGetProperty(
+                    converter,
+                    ammod::apple_private::audio_converter_property::kCurrentOutputDescription,
+                    &destinationSize, &refreshedDestination);
+                const auto queryReturnQpc = CurrentQpc();
+                Log(L"native trace unparsed decompression cookie ASBD converter=" +
+                    std::to_wstring(reinterpret_cast<std::uintptr_t>(converter)) +
+                    L" cookieBytes=" + std::to_wstring(dataSize) +
+                    L" registered=" +
+                    std::to_wstring(g_audioCoreRuntime.IsConverterRegistered(converter)) +
+                    L" p0=" + std::to_wstring(g_audioCoreRuntime.IsP0Converter(converter)) +
+                    L" sourceResult=" + std::to_wstring(sourceResult) +
+                    L" sourceSize=" + std::to_wstring(sourceSize) +
+                    L" destinationResult=" + std::to_wstring(destinationResult) +
+                    L" destinationSize=" + std::to_wstring(destinationSize) +
+                    L" enterQpc=" + std::to_wstring(queryEnterQpc) +
+                    L" returnQpc=" + std::to_wstring(queryReturnQpc) +
+                    L" source{" + AppleFormatText(&refreshedSource) +
+                    L"} destination{" + AppleFormatText(&refreshedDestination) + L"}");
             }
         }
     }
