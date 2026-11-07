@@ -1223,6 +1223,17 @@ void PublishNativeTraceCursorBinding(void* converter,
     g_nativeTraceCursorBindingConverter.store(converter, std::memory_order_release);
 }
 
+std::uintptr_t CurrentNativeTraceCursorAddress() noexcept {
+    const auto ownerBefore =
+        g_nativeTraceCursorBindingConverter.load(std::memory_order_acquire);
+    if (!ownerBefore) return 0;
+    const auto address =
+        g_nativeTraceCursorBindingAddress.load(std::memory_order_relaxed);
+    const auto ownerAfter =
+        g_nativeTraceCursorBindingConverter.load(std::memory_order_acquire);
+    return ownerBefore == ownerAfter && ownerAfter ? address : 0;
+}
+
 std::uintptr_t FindNativeTraceCursorBinding(void* converter) noexcept {
     const auto ownerBefore =
         g_nativeTraceCursorBindingConverter.load(std::memory_order_acquire);
@@ -3821,8 +3832,17 @@ AppleOSStatus __cdecl HookV2AudioConverterReset(void* converter) {
     if (trackedP0) g_nativeP0Puller.PauseForReset(converter);
     std::unique_lock<std::mutex> p0ResetLock;
     if (trackedP0) p0ResetLock = std::unique_lock<std::mutex>(g_p0FillMutex);
+    const auto cursorTargetAddress = nativeTrace
+        ? CurrentNativeTraceCursorAddress() : 0;
+    const auto cursorTargetResetBefore =
+        CaptureNativeTraceCursorTargetAddress(cursorTargetAddress);
     const auto result = g_v2OriginalAudioConverterReset
         ? g_v2OriginalAudioConverterReset(converter) : -1;
+    const auto cursorTargetResetAfter =
+        CaptureNativeTraceCursorTargetAddress(cursorTargetAddress);
+    const bool cursorTargetChangedDuringReset =
+        cursorTargetResetBefore.valid && cursorTargetResetAfter.valid &&
+        !NativeTraceRawBytesEqual(cursorTargetResetBefore, cursorTargetResetAfter);
     if (trackedP0 && result != 0) g_nativeP0Puller.ResumeAfterCursorProperty(converter);
     const auto resetReturnQpc = nativeTrace ? CurrentQpc() : 0;
     const auto p0TraceEpoch = nativeTrace && result == 0 &&
@@ -3845,6 +3865,13 @@ AppleOSStatus __cdecl HookV2AudioConverterReset(void* converter) {
             L" result=" + std::to_wstring(result) +
             L" enterQpc=" + std::to_wstring(resetEnterQpc) +
             L" returnQpc=" + std::to_wstring(resetReturnQpc) +
+            (cursorTargetAddress
+                ? L" cursorTargetAddress=" + std::to_wstring(cursorTargetAddress) +
+                    L" cursorTargetBefore=" + NativeTraceRawBytesText(cursorTargetResetBefore) +
+                    L" cursorTargetAfter=" + NativeTraceRawBytesText(cursorTargetResetAfter) +
+                    L" cursorTargetChangedDuringReset=" +
+                        std::to_wstring(cursorTargetChangedDuringReset ? 1 : 0)
+                : L"") +
             L" stack=" + CaptureCurrentStackText(2, 8));
     }
     if (result == 0 && g_audioCoreRuntime.UiEnabled()) {
@@ -3912,8 +3939,17 @@ AppleOSStatus __cdecl HookV2AudioConverterDispose(void* converter) {
     const bool trackedP0 = g_nativeP0Puller.BeginDispose(converter);
     std::unique_lock<std::mutex> p0DisposeLock;
     if (trackedP0) p0DisposeLock = std::unique_lock<std::mutex>(g_p0FillMutex);
+    const auto cursorTargetAddress = nativeTrace
+        ? CurrentNativeTraceCursorAddress() : 0;
+    const auto cursorTargetDisposeBefore =
+        CaptureNativeTraceCursorTargetAddress(cursorTargetAddress);
     const auto result = g_v2OriginalAudioConverterDispose
         ? g_v2OriginalAudioConverterDispose(converter) : -1;
+    const auto cursorTargetDisposeAfter =
+        CaptureNativeTraceCursorTargetAddress(cursorTargetAddress);
+    const bool cursorTargetChangedDuringDispose =
+        cursorTargetDisposeBefore.valid && cursorTargetDisposeAfter.valid &&
+        !NativeTraceRawBytesEqual(cursorTargetDisposeBefore, cursorTargetDisposeAfter);
     ClearNativeTraceCursorBinding(converter);
     if (nativeTrace) {
         Log(L"native trace AudioConverterDispose converter=" +
@@ -3924,6 +3960,13 @@ AppleOSStatus __cdecl HookV2AudioConverterDispose(void* converter) {
             L" result=" + std::to_wstring(result) +
             L" enterQpc=" + std::to_wstring(disposeEnterQpc) +
             L" returnQpc=" + std::to_wstring(CurrentQpc()) +
+            (cursorTargetAddress
+                ? L" cursorTargetAddress=" + std::to_wstring(cursorTargetAddress) +
+                    L" cursorTargetBefore=" + NativeTraceRawBytesText(cursorTargetDisposeBefore) +
+                    L" cursorTargetAfter=" + NativeTraceRawBytesText(cursorTargetDisposeAfter) +
+                    L" cursorTargetChangedDuringDispose=" +
+                        std::to_wstring(cursorTargetChangedDuringDispose ? 1 : 0)
+                : L"") +
             L" stack=" + CaptureCurrentStackText(2, 8));
     }
     if (uiEnabled) g_audioCoreRuntime.OnConverterDisposed(converter);
