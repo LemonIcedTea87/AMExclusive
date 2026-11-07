@@ -1599,6 +1599,68 @@ V2P0PcmSampleStats InspectV2P0PcmSamples(
     return stats;
 }
 
+struct V2P0PcmPrefixStats final {
+    std::uint64_t signature{};
+    std::uint32_t frames{};
+    bool valid{};
+};
+
+V2P0PcmPrefixStats InspectV2P0PcmPrefix(
+    const AppleAudioBufferList* list,
+    const ammod::audio_v2::ApplePcmFormatView& format,
+    std::uint32_t producedPackets) noexcept {
+    V2P0PcmPrefixStats stats{};
+    constexpr std::uint32_t kPrefixFrames = 32;
+    if (!list || producedPackets == 0 || format.formatId != 0x6C70636Du ||
+        (format.formatFlags & ammod::audio_v2::kAppleFormatFlagIsFloat) == 0 ||
+        format.bitsPerChannel != 32 || format.channelsPerFrame != 2 ||
+        format.framesPerPacket != 1) return stats;
+
+    stats.signature = kFnv1aOffset;
+    __try {
+        if (list->mNumberBuffers == 1) {
+            const auto& buffer = list->mBuffers[0];
+            if (!buffer.mData || buffer.mNumberChannels != 2) return {};
+            const auto availableFrames =
+                buffer.mDataByteSize / (2u * sizeof(float));
+            stats.frames = static_cast<std::uint32_t>(
+                std::min<std::uint64_t>(kPrefixFrames,
+                    std::min<std::uint64_t>(producedPackets, availableFrames)));
+            if (stats.frames == 0) return {};
+            AppendP1Hash(stats.signature, buffer.mData,
+                         static_cast<std::size_t>(stats.frames) * 2u * sizeof(float));
+        } else if (list->mNumberBuffers == 2) {
+            const auto& left = list->mBuffers[0];
+            const auto& right = list->mBuffers[1];
+            if (!left.mData || !right.mData ||
+                left.mNumberChannels != 1 || right.mNumberChannels != 1) return {};
+            const auto leftFrames = left.mDataByteSize / sizeof(float);
+            const auto rightFrames = right.mDataByteSize / sizeof(float);
+            stats.frames = static_cast<std::uint32_t>(
+                std::min<std::uint64_t>(kPrefixFrames,
+                    std::min<std::uint64_t>(producedPackets,
+                        std::min(leftFrames, rightFrames))));
+            if (stats.frames == 0) return {};
+            const auto* leftSamples = static_cast<const std::uint8_t*>(left.mData);
+            const auto* rightSamples = static_cast<const std::uint8_t*>(right.mData);
+            for (std::uint32_t frame = 0; frame < stats.frames; ++frame) {
+                AppendP1Hash(stats.signature,
+                    leftSamples + static_cast<std::size_t>(frame) * sizeof(float),
+                    sizeof(float));
+                AppendP1Hash(stats.signature,
+                    rightSamples + static_cast<std::size_t>(frame) * sizeof(float),
+                    sizeof(float));
+            }
+        } else {
+            return {};
+        }
+        stats.valid = true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        stats = {};
+    }
+    return stats;
+}
+
 V2P1SignatureResult ComputeV2P1Signature(
     const AppleAudioBufferList* list, bool fullScan) noexcept {
     V2P1SignatureResult result{};
@@ -2503,6 +2565,26 @@ void AudioCoreRuntimeEventCallback(void*, const ammod::audio_v2::AudioCoreRuntim
             L" integerizedSamples=" + std::to_wstring(stats.coordinator.source.integerizedSamples) +
             L" clippedSamples=" + std::to_wstring(stats.coordinator.source.clippedSamples) +
             L" nonFiniteSamples=" + std::to_wstring(stats.coordinator.source.nonFiniteSamples) +
+            L" firstQueueReadObserved=" +
+                std::to_wstring(stats.coordinator.source.firstReadObserved ? 1 : 0) +
+            L" firstQueueReadSequence=" +
+                std::to_wstring(stats.coordinator.source.firstReadSequence) +
+            L" firstQueueReadFrame=" +
+                std::to_wstring(stats.coordinator.source.firstReadFrame) +
+            L" firstQueueReadFrames=" +
+                std::to_wstring(stats.coordinator.source.firstReadFrames) +
+            L" firstQueueReadFloatHash=" +
+                std::to_wstring(stats.coordinator.source.firstReadFloatHash) +
+            L" firstQueueReadIntegerHash=" +
+                std::to_wstring(stats.coordinator.source.firstReadIntegerHash) +
+            L" firstSinkSubmissionTraceValid=" +
+                std::to_wstring(sink.firstSubmissionTraceValid ? 1 : 0) +
+            L" firstSinkSubmissionWasSilence=" +
+                std::to_wstring(sink.firstSubmissionWasSilence ? 1 : 0) +
+            L" firstSinkSubmissionPrefixFrames=" +
+                std::to_wstring(sink.firstSubmissionPrefixFrames) +
+            L" firstSinkSubmissionPrefixHash=" +
+                std::to_wstring(sink.firstSubmissionPrefixHash) +
             L" underruns=" + std::to_wstring(sink.underruns) +
             L" getFailures=" + std::to_wstring(sink.getBufferFailures) +
             L" releaseFailures=" + std::to_wstring(sink.releaseBufferFailures) +
@@ -3624,6 +3706,11 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
                         static_cast<const AppleAudioBufferList*>(outputData),
                         sampleFormat, producedPackets)
                     : V2P0PcmSampleStats{};
+                const auto prefixStats = formatKnown
+                    ? InspectV2P0PcmPrefix(
+                        static_cast<const AppleAudioBufferList*>(outputData),
+                        sampleFormat, producedPackets)
+                    : V2P0PcmPrefixStats{};
                 const auto sampleRatio = sampleStats.samplesScanned != 0
                     ? static_cast<double>(sampleStats.zeroSamples) /
                         static_cast<double>(sampleStats.samplesScanned)
@@ -3662,6 +3749,9 @@ AppleOSStatus __cdecl HookV2AudioConverterFillComplexBuffer(
                         std::to_wstring(sampleStats.inspectedFrames) +
                     L" peakAbs=" + std::to_wstring(sampleStats.peakAbs) +
                     L" sampleHash=" + std::to_wstring(sampleStats.signature) +
+                    L" prefixFrames=" + std::to_wstring(prefixStats.frames) +
+                    L" prefixHash=" + std::to_wstring(prefixStats.signature) +
+                    L" prefixValid=" + std::to_wstring(prefixStats.valid ? 1 : 0) +
                     L" enterQpc=" + std::to_wstring(enterQpc) +
                     L" returnQpc=" + std::to_wstring(fillReturnQpc));
             }

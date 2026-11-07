@@ -6,6 +6,7 @@
 #include "LocalFloatIntegerizer.h"
 #include "PcmQueue.h"
 
+#include <cstddef>
 #include <cstdint>
 
 namespace ammod::audio_v2 {
@@ -21,6 +22,12 @@ struct QueuedPcmSourceStats final {
     std::uint64_t integerizedSamples{};
     std::uint64_t clippedSamples{};
     std::uint64_t nonFiniteSamples{};
+    std::uint64_t firstReadSequence{};
+    std::uint64_t firstReadFrame{};
+    std::uint64_t firstReadFloatHash{};
+    std::uint64_t firstReadIntegerHash{};
+    std::uint32_t firstReadFrames{};
+    bool firstReadObserved{};
 };
 
 // Bridges the project-owned P0 queue to the endpoint-facing integer source
@@ -87,6 +94,17 @@ public:
     const QueuedPcmSourceStats& Stats() const noexcept { return stats_; }
 
 private:
+    static std::uint64_t HashBytes(const void* data, std::size_t bytes) noexcept {
+        if (!data || bytes == 0) return 0;
+        const auto* input = static_cast<const std::uint8_t*>(data);
+        std::uint64_t hash = 1469598103934665603ULL;
+        for (std::size_t index = 0; index < bytes; ++index) {
+            hash ^= input[index];
+            hash *= 1099511628211ULL;
+        }
+        return hash;
+    }
+
     HRESULT FillInternal(std::int32_t* destination, std::uint32_t capacityFrames,
                          std::uint32_t& writtenFrames, bool& endOfStream,
                          bool singleBlock, bool stopAtDiscontinuity = false) noexcept {
@@ -133,6 +151,14 @@ private:
                                      kSupportedChannels;
             const auto outputOffset = static_cast<std::size_t>(writtenFrames) *
                                       kSupportedChannels;
+            const bool traceFirstRead = !stats_.firstReadObserved;
+            const auto traceFrames = traceFirstRead
+                ? (take < 32u ? take : 32u) : 0u;
+            const auto traceSamples = static_cast<std::size_t>(traceFrames) *
+                                      kSupportedChannels;
+            const auto traceFloatHash = traceFirstRead
+                ? HashBytes(block->samples.data() + inputOffset,
+                            traceSamples * sizeof(float)) : 0u;
             if (mappingPolicy_ == PcmMappingPolicy::LocalFloat32ToPcm32 ||
                 mappingPolicy_ == PcmMappingPolicy::DecodedLossyFloat32ToPcm32) {
                 LocalFloatIntegerizerStats integerizer{};
@@ -162,6 +188,15 @@ private:
                         *block, blockOffsetFrames_, destination + outputOffset, take)) {
                     return E_FAIL;
                 }
+            }
+            if (traceFirstRead) {
+                stats_.firstReadSequence = block->sequence;
+                stats_.firstReadFrame = block->firstFrame + blockOffsetFrames_;
+                stats_.firstReadFrames = traceFrames;
+                stats_.firstReadFloatHash = traceFloatHash;
+                stats_.firstReadIntegerHash = HashBytes(
+                    destination + outputOffset, traceSamples * sizeof(std::int32_t));
+                stats_.firstReadObserved = true;
             }
 
             blockOffsetFrames_ += take;

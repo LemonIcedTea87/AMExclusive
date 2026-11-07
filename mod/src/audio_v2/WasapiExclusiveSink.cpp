@@ -35,6 +35,20 @@ REFERENCE_TIME PeriodForFrames(std::uint32_t frames, std::uint32_t sampleRate) n
         sampleRate);
 }
 
+std::uint64_t HashIntegerPcmPrefix(const std::int32_t* samples,
+                                   std::uint32_t frames) noexcept {
+    if (!samples || frames == 0) return 0;
+    const auto* bytes = reinterpret_cast<const std::uint8_t*>(samples);
+    const auto byteCount = static_cast<std::size_t>(frames) * kSupportedChannels *
+                           sizeof(std::int32_t);
+    std::uint64_t hash = 1469598103934665603ULL;
+    for (std::size_t index = 0; index < byteCount; ++index) {
+        hash ^= bytes[index];
+        hash *= 1099511628211ULL;
+    }
+    return hash;
+}
+
 } // namespace
 
 WasapiExclusiveSink::~WasapiExclusiveSink() {
@@ -47,6 +61,10 @@ HRESULT WasapiExclusiveSink::Open(const WasapiSinkConfig& config) noexcept {
     NotifyLifecycle(WasapiSinkLifecycleEvent::OpenEnter, S_OK);
     submittedFrames_.store(0, std::memory_order_release);
     submittedBuffers_.store(0, std::memory_order_release);
+    firstSubmissionTraceState_.store(0, std::memory_order_release);
+    firstSubmissionPrefixFrames_.store(0, std::memory_order_relaxed);
+    firstSubmissionPrefixHash_.store(0, std::memory_order_relaxed);
+    firstSubmissionWasSilence_.store(false, std::memory_order_relaxed);
     controlledSilenceFrames_.store(0, std::memory_order_release);
     sourceWaits_.store(0, std::memory_order_release);
     underruns_.store(0, std::memory_order_release);
@@ -507,6 +525,13 @@ HRESULT WasapiExclusiveSink::RenderOneBuffer() noexcept {
         }
     }
 
+    const auto submissionTraceState =
+        firstSubmissionTraceState_.load(std::memory_order_acquire);
+    const auto submissionPrefixFrames = submissionTraceState == 0 && !silencePrime
+        ? (written < 32u ? written : 32u) : 0u;
+    const auto submissionPrefixHash = submissionPrefixFrames != 0
+        ? HashIntegerPcmPrefix(canonical, submissionPrefixFrames) : 0u;
+
     hr = render_->ReleaseBuffer(bufferFrames_, flags);
     if (FAILED(hr)) {
         releaseBufferFailures_.fetch_add(1, std::memory_order_relaxed);
@@ -517,6 +542,20 @@ HRESULT WasapiExclusiveSink::RenderOneBuffer() noexcept {
     }
     submittedFrames_.fetch_add(bufferFrames_, std::memory_order_relaxed);
     submittedBuffers_.fetch_add(1, std::memory_order_relaxed);
+    if (submissionTraceState == 0) {
+        std::uint32_t expectedTraceState = 0;
+        if (firstSubmissionTraceState_.compare_exchange_strong(
+                expectedTraceState, 1, std::memory_order_acq_rel,
+                std::memory_order_acquire)) {
+            firstSubmissionPrefixFrames_.store(
+                submissionPrefixFrames, std::memory_order_relaxed);
+            firstSubmissionPrefixHash_.store(
+                submissionPrefixHash, std::memory_order_relaxed);
+            firstSubmissionWasSilence_.store(
+                silencePrime, std::memory_order_relaxed);
+            firstSubmissionTraceState_.store(2, std::memory_order_release);
+        }
+    }
     if (silencePrime) {
         controlledSilenceFrames_.fetch_add(bufferFrames_, std::memory_order_relaxed);
         silencePrimePending_ = false;
@@ -963,6 +1002,10 @@ WasapiSinkStats WasapiExclusiveSink::Stats() const noexcept {
         static_cast<HRESULT>(clockReadResult_.load(std::memory_order_relaxed)),
         clientStarts_.load(std::memory_order_acquire),
         startsBeforeFirstBuffer_.load(std::memory_order_acquire),
+        firstSubmissionPrefixHash_.load(std::memory_order_acquire),
+        firstSubmissionPrefixFrames_.load(std::memory_order_acquire),
+        firstSubmissionTraceState_.load(std::memory_order_acquire) == 2,
+        firstSubmissionWasSilence_.load(std::memory_order_acquire),
     };
 }
 

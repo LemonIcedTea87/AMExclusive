@@ -75,6 +75,10 @@ struct WasapiSinkStats final {
     // empty stream never starts the endpoint at all.
     std::uint64_t clientStarts{};
     std::uint64_t startsBeforeFirstBuffer{};
+    std::uint64_t firstSubmissionPrefixHash{};
+    std::uint32_t firstSubmissionPrefixFrames{};
+    bool firstSubmissionTraceValid{};
+    bool firstSubmissionWasSilence{};
 };
 
 enum class WasapiSinkState : std::uint8_t {
@@ -167,6 +171,10 @@ private:
     // generation these survive Stop and reset only in Open.
     std::atomic<std::uint64_t> clientStarts_{};
     std::atomic<std::uint64_t> startsBeforeFirstBuffer_{};
+    std::atomic<std::uint32_t> firstSubmissionTraceState_{};
+    std::atomic<std::uint32_t> firstSubmissionPrefixFrames_{};
+    std::atomic<std::uint64_t> firstSubmissionPrefixHash_{};
+    std::atomic<bool> firstSubmissionWasSilence_{};
     std::atomic<std::uint64_t> clockFrequency_{};
     std::atomic<std::uint64_t> clockPosition_{};
     std::atomic<std::uint64_t> clockTarget_{};
