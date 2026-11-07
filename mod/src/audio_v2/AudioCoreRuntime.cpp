@@ -1528,7 +1528,7 @@ void AudioCoreRuntime::OnNativeClientInitialized(void* client, const wchar_t* en
         if (callbacks_.onDiagnostic) {
             callbacks_.onDiagnostic(
                 callbacks_.context,
-                L"audio core v2 cold-start pump warmup armed periodMs=100 timeoutMs=5000");
+                L"audio core v2 cold-start pump warmup armed periodMs=500 timeoutMs=5000");
         }
     }
     Wake();
