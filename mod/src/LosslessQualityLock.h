@@ -13,6 +13,9 @@ bool Install(HMODULE coreMedia, HMODULE coreFoundation, LogFunction log);
 // True once Install has rejected the loaded CoreMedia image as a build other
 // than the verified one. Install never succeeds afterwards in this process.
 bool Unavailable() noexcept;
+// Install read-only probes for public CoreMedia filter factories when the
+// loaded private ABI fingerprint is unknown. These hooks never alter filters.
+bool InstallDiagnostics(HMODULE coreMedia, LogFunction log);
 void SetEnabled(bool enabled) noexcept;
 std::int32_t CreateStrictLosslessFilter(SubtypeFactory factory, void* allocator,
                                         void* allowedSubtypes, std::uint16_t tier,

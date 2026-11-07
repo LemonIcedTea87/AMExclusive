@@ -10,7 +10,10 @@
 #include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <iomanip>
 #include <mutex>
+#include <sstream>
+#include <string>
 #include <vector>
 
 namespace ammod::quality {
@@ -461,10 +464,262 @@ bool ImageMatchesVerifiedBuild(HMODULE media) {
     return ok;
 }
 
+
+using FilterTreeCreateFn = std::int32_t(__cdecl*)(void*, void**);
+using FilterTreeCreateFilterFn = std::int32_t(__cdecl*)(void*, void*, std::uint32_t, void**);
+using SelectionBossAddFilterFn = std::int32_t(__cdecl*)(void*, void*);
+using SelectionBossApplyFiltersFn = std::int32_t(__cdecl*)(void*);
+
+FilterTreeCreateFn diagnosticOriginalTreeCreate{};
+FilterTreeCreateFilterFn diagnosticOriginalTreeCreateFilter{};
+SimpleFactory diagnosticOriginalSimpleCreate{};
+SelectionBossAddFilterFn diagnosticOriginalBossAddFilter{};
+SelectionBossApplyFiltersFn diagnosticOriginalBossApplyFilters{};
+std::atomic<std::uint32_t> diagnosticSnapshotCount{};
+std::atomic<std::uint32_t> diagnosticHookCalls{};
+std::uintptr_t diagnosticImageBase{};
+std::uintptr_t diagnosticImageSize{};
+bool diagnosticsInstalled{};
+
+bool DiagnosticReadMemory(const void* source, void* destination,
+                          std::size_t bytes) noexcept {
+    if (!source || !destination || bytes == 0) return false;
+    SIZE_T copied{};
+    return ReadProcessMemory(GetCurrentProcess(), source, destination, bytes, &copied) &&
+           copied == bytes;
+}
+
+std::wstring DiagnosticHex(const std::uint8_t* bytes, std::size_t count) {
+    std::wostringstream out;
+    out << std::hex << std::uppercase << std::setfill(L'0');
+    for (std::size_t i = 0; i < count; ++i) {
+        if (i) out << L' ';
+        out << std::setw(2) << static_cast<unsigned>(bytes[i]);
+    }
+    return out.str();
+}
+
+void DiagnosticDumpBlock(const std::wstring& label, const void* address,
+                         std::size_t requestedBytes) {
+    if (!writeLog || !address) return;
+    constexpr std::size_t kMaximumBytes = 0x90;
+    const auto count = std::min(requestedBytes, kMaximumBytes);
+    std::array<std::uint8_t, kMaximumBytes> bytes{};
+    if (!DiagnosticReadMemory(address, bytes.data(), count)) {
+        writeLog(L"CoreMedia filter diagnostic block unreadable label=" + label +
+                 L" address=" +
+                 std::to_wstring(reinterpret_cast<std::uintptr_t>(address)));
+        return;
+    }
+
+    writeLog(L"CoreMedia filter diagnostic block label=" + label +
+             L" address=" +
+             std::to_wstring(reinterpret_cast<std::uintptr_t>(address)) +
+             L" bytes=" + DiagnosticHex(bytes.data(), count));
+
+    if (diagnosticImageBase == 0 || diagnosticImageSize == 0) return;
+    std::wostringstream refs;
+    refs << L"CoreMedia filter diagnostic image pointers label=" << label
+         << L" address=0x" << std::hex << std::uppercase
+         << reinterpret_cast<std::uintptr_t>(address);
+    bool any{};
+    for (std::size_t offset = 0; offset + sizeof(std::uintptr_t) <= count;
+         offset += sizeof(std::uintptr_t)) {
+        std::uintptr_t value{};
+        std::memcpy(&value, bytes.data() + offset, sizeof(value));
+        if (value >= diagnosticImageBase &&
+            value < diagnosticImageBase + diagnosticImageSize) {
+            refs << L" +" << std::setw(2) << offset << L"=RVA:0x"
+                 << std::setw(8) << (value - diagnosticImageBase);
+            any = true;
+        }
+    }
+    if (any) writeLog(refs.str());
+}
+
+void DiagnosticSnapshot(const wchar_t* kind, void* object) {
+    if (!writeLog || !object) return;
+    const auto ordinal = diagnosticSnapshotCount.fetch_add(
+        1, std::memory_order_relaxed) + 1;
+    if (ordinal > 64) return;
+
+    const std::wstring label = std::wstring(kind ? kind : L"unknown") +
+        L" ordinal=" + std::to_wstring(ordinal);
+    DiagnosticDumpBlock(label + L" object", object, 0x90);
+
+    // The old implementation treated object+0x18 as a class descriptor and
+    // descriptor+0x10 as a method table. Probe those locations read-only;
+    // these are hypotheses for comparison, not assumptions used by the hook.
+    std::uintptr_t classCandidate{};
+    const auto* objectBytes = static_cast<const std::uint8_t*>(object);
+    if (!DiagnosticReadMemory(objectBytes + 0x18, &classCandidate,
+                              sizeof(classCandidate)) || classCandidate == 0) {
+        return;
+    }
+    DiagnosticDumpBlock(label + L" probe-object+0x18",
+                        reinterpret_cast<const void*>(classCandidate), 0x60);
+
+    std::uintptr_t methodsCandidate{};
+    const auto* classBytes =
+        reinterpret_cast<const std::uint8_t*>(classCandidate);
+    if (!DiagnosticReadMemory(classBytes + 0x10, &methodsCandidate,
+                              sizeof(methodsCandidate)) || methodsCandidate == 0) {
+        return;
+    }
+    DiagnosticDumpBlock(label + L" probe-object+0x18-plus0x10",
+                        reinterpret_cast<const void*>(methodsCandidate), 0x60);
+}
+
+std::uintptr_t DiagnosticImageSize(HMODULE media) noexcept {
+    IMAGE_DOS_HEADER dos{};
+    if (!DiagnosticReadMemory(media, &dos, sizeof(dos)) ||
+        dos.e_magic != IMAGE_DOS_SIGNATURE || dos.e_lfanew <= 0) {
+        return 0;
+    }
+    IMAGE_NT_HEADERS64 nt{};
+    const auto* header = reinterpret_cast<const std::uint8_t*>(media) + dos.e_lfanew;
+    if (!DiagnosticReadMemory(header, &nt, sizeof(nt)) ||
+        nt.Signature != IMAGE_NT_SIGNATURE ||
+        nt.OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
+        return 0;
+    }
+    return nt.OptionalHeader.SizeOfImage;
+}
+
+std::int32_t __cdecl DiagnosticFilterTreeCreate(void* descriptor, void** output) {
+    const auto result = diagnosticOriginalTreeCreate
+        ? diagnosticOriginalTreeCreate(descriptor, output) : -1;
+    void* created{};
+    if (result == 0 && output &&
+        DiagnosticReadMemory(output, &created, sizeof(created))) {
+        DiagnosticSnapshot(L"FigAlternateFilterTreeCreate", created);
+    }
+    return result;
+}
+
+std::int32_t __cdecl DiagnosticFilterTreeCreateFilter(
+    void* tree, void* allocatorOrContext, std::uint32_t flags, void** output) {
+    const auto result = diagnosticOriginalTreeCreateFilter
+        ? diagnosticOriginalTreeCreateFilter(tree, allocatorOrContext, flags, output)
+        : -1;
+    void* created{};
+    if (result == 0 && output &&
+        DiagnosticReadMemory(output, &created, sizeof(created))) {
+        DiagnosticSnapshot(L"FigAlternateFilterTreeCreateFilter", created);
+    }
+    return result;
+}
+
+std::int32_t __cdecl DiagnosticSimpleAlternateFilterCreate(
+    void* allocator, void* name, std::uint32_t priority,
+    const Callbacks* callbacks, void* context, void** output) {
+    const auto result = diagnosticOriginalSimpleCreate
+        ? diagnosticOriginalSimpleCreate(
+            allocator, name, priority, callbacks, context, output)
+        : -1;
+    void* created{};
+    if (result == 0 && output &&
+        DiagnosticReadMemory(output, &created, sizeof(created))) {
+        DiagnosticSnapshot(L"FigSimpleAlternateFilterCreate", created);
+    }
+    return result;
+}
+
+std::int32_t __cdecl DiagnosticSelectionBossAddFilter(void* boss, void* filter) {
+    DiagnosticSnapshot(L"FigAlternateSelectionBossAddFilter boss", boss);
+    DiagnosticSnapshot(L"FigAlternateSelectionBossAddFilter filter", filter);
+    return diagnosticOriginalBossAddFilter
+        ? diagnosticOriginalBossAddFilter(boss, filter) : -1;
+}
+
+std::int32_t __cdecl DiagnosticSelectionBossApplyFilters(void* boss) {
+    DiagnosticSnapshot(L"FigAlternateSelectionBossApplyFilters boss", boss);
+    return diagnosticOriginalBossApplyFilters
+        ? diagnosticOriginalBossApplyFilters(boss) : -1;
+}
+
+template<typename Fn>
+bool InstallDiagnosticExport(HMODULE media, const char* exportName, void* detour,
+                             Fn& original, const wchar_t* label) {
+    auto* target = media ? reinterpret_cast<void*>(GetProcAddress(media, exportName))
+                         : nullptr;
+    if (!target) {
+        if (writeLog) writeLog(L"CoreMedia filter diagnostic export missing: " +
+                               std::wstring(label));
+        return false;
+    }
+    if (original) return true;
+
+    void* trampoline{};
+    const auto create = MH_CreateHook(target, detour, &trampoline);
+    if (create != MH_OK) {
+        if (writeLog) writeLog(L"CoreMedia filter diagnostic hook create failed label=" +
+                               std::wstring(label) + L" status=" +
+                               std::to_wstring(create));
+        return false;
+    }
+    original = reinterpret_cast<Fn>(trampoline);
+    const auto enable = MH_EnableHook(target);
+    if (enable != MH_OK && enable != MH_ERROR_ENABLED) {
+        if (writeLog) writeLog(L"CoreMedia filter diagnostic hook enable failed label=" +
+                               std::wstring(label) + L" status=" +
+                               std::to_wstring(enable));
+        return false;
+    }
+    diagnosticHookCalls.fetch_add(1, std::memory_order_relaxed);
+    if (writeLog) writeLog(L"CoreMedia filter diagnostic hook installed: " +
+                           std::wstring(label));
+    return true;
+}
+
 } // namespace
 
 bool Unavailable() noexcept {
     return imageRejected.load(std::memory_order_acquire);
+}
+
+bool InstallDiagnostics(HMODULE media, LogFunction log) {
+    std::lock_guard lock(installMutex);
+    if (!imageRejected.load(std::memory_order_acquire) || !media) return false;
+    if (diagnosticsInstalled) return true;
+
+    writeLog = log;
+    diagnosticImageBase = reinterpret_cast<std::uintptr_t>(media);
+    diagnosticImageSize = DiagnosticImageSize(media);
+    if (diagnosticImageSize == 0) {
+        if (writeLog) writeLog(L"CoreMedia filter diagnostics refused: PE image size unavailable");
+        return false;
+    }
+
+    const bool treeCreate = InstallDiagnosticExport(
+        media, "FigAlternateFilterTreeCreate",
+        reinterpret_cast<void*>(&DiagnosticFilterTreeCreate),
+        diagnosticOriginalTreeCreate, L"FigAlternateFilterTreeCreate");
+    const bool treeCreateFilter = InstallDiagnosticExport(
+        media, "FigAlternateFilterTreeCreateFilter",
+        reinterpret_cast<void*>(&DiagnosticFilterTreeCreateFilter),
+        diagnosticOriginalTreeCreateFilter, L"FigAlternateFilterTreeCreateFilter");
+    const bool simpleCreate = InstallDiagnosticExport(
+        media, "FigSimpleAlternateFilterCreate",
+        reinterpret_cast<void*>(&DiagnosticSimpleAlternateFilterCreate),
+        diagnosticOriginalSimpleCreate, L"FigSimpleAlternateFilterCreate");
+    const bool bossAdd = InstallDiagnosticExport(
+        media, "FigAlternateSelectionBossAddFilter",
+        reinterpret_cast<void*>(&DiagnosticSelectionBossAddFilter),
+        diagnosticOriginalBossAddFilter, L"FigAlternateSelectionBossAddFilter");
+    const bool bossApply = InstallDiagnosticExport(
+        media, "FigAlternateSelectionBossApplyFilters",
+        reinterpret_cast<void*>(&DiagnosticSelectionBossApplyFilters),
+        diagnosticOriginalBossApplyFilters, L"FigAlternateSelectionBossApplyFilters");
+
+    diagnosticsInstalled = treeCreate && treeCreateFilter && simpleCreate &&
+                           bossAdd && bossApply;
+    if (writeLog) {
+        writeLog(diagnosticsInstalled
+            ? L"CoreMedia filter diagnostics ready; public filter APIs are observed read-only"
+            : L"CoreMedia filter diagnostics partially installed; playback/selection behavior unchanged");
+    }
+    return diagnosticsInstalled;
 }
 
 bool Install(HMODULE media, HMODULE foundation, LogFunction log) {

@@ -2214,9 +2214,14 @@ DWORD WINAPI QualityLockHookLoop(void*) {
     while (!InstallQualityLockHooks()) {
         ammod::quality::SetEnabled(false);
         if (ammod::quality::Unavailable()) {
-            // The loaded CoreMedia image is not the verified build; the raw-RVA
-            // quality hook must never be written into it. Leave the policy off
-            // for the life of this process instead of retrying forever.
+            // Never write the old private RVA into an unknown CoreMedia build.
+            // Instead, observe the public filter factories and selection-boss API
+            // without changing any filter or candidate list.
+            const auto diagnosticHooks = ammod::quality::InstallDiagnostics(
+                GetModuleHandleW(L"CoreMedia.dll"), Log);
+            Log(diagnosticHooks
+                ? L"Quality lock remains disabled; CoreMedia read-only filter diagnostics active"
+                : L"Quality lock remains disabled; CoreMedia filter diagnostics unavailable");
             Log(L"Quality lock permanently disabled for this process: unverified CoreMedia build");
             return 0;
         }
