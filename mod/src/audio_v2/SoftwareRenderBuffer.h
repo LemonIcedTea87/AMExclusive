@@ -63,7 +63,7 @@ public:
         return S_OK;
     }
 
-    void Tick() noexcept {
+    void Tick(bool advanceClock = true) noexcept {
         std::lock_guard lock(mutex_);
         if (!running_) return;
         // Carry the fractional frame (e.g. 11025 Hz) instead of rounding up
@@ -73,7 +73,7 @@ public:
         remainder_ = static_cast<UINT32>(numerator % 100u);
         const auto consumed = std::min(padding_, quantum);
         padding_ -= consumed;
-        position_ += consumed;
+        if (advanceClock) position_ += consumed;
     }
 
     UINT32 Padding() const noexcept {

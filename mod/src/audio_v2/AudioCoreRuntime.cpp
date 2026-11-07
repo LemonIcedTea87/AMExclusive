@@ -1527,7 +1527,7 @@ void AudioCoreRuntime::OnNativeClientInitialized(void* client, const wchar_t* en
         if (callbacks_.onDiagnostic) {
             callbacks_.onDiagnostic(
                 callbacks_.context,
-                L"audio core v2 cold-start pump warmup armed pumpHeld=1 pollMs=50 timeoutMs=5000");
+                L"audio core v2 cold-start pump warmup armed clockFrozen=1 eventPeriodMs=10 timeoutMs=5000");
         }
     }
     Wake();
@@ -2942,9 +2942,9 @@ std::uint32_t AudioCoreRuntime::NativePumpPeriodMs() noexcept {
             nativeStartupPumpWarmupDeadlineTick_.load(std::memory_order_acquire);
         const auto now = GetTickCount64();
         if (!ready && deadline != 0 && now < deadline) {
-            // Zero is the NativeRenderGateProxy sentinel for holding render events.
-            // Its worker polls at 50 ms but does not tick the software clock or signal
-            // Apple's render event until the exact bound ALAC/QLAC cursor is ready.
+            // Zero asks NativeRenderGateProxy to pulse Apple's render callback while
+            // keeping the synthetic IAudioClock position frozen until the exact bound
+            // ALAC/QLAC cursor is ready.
             return 0;
         }
 

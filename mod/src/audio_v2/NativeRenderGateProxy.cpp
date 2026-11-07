@@ -900,11 +900,13 @@ DWORD WINAPI NativeAudioClientProxy::PumpThreadThunk(void* context) noexcept {
         const auto requestedMs = self->callbacks_.pumpPeriodMs
             ? self->callbacks_.pumpPeriodMs(self->callbacks_.context)
             : 10u;
-        // A zero request is an experimental startup hold: poll for release without
-        // advancing the software clock or signalling another Apple render event.
-        const bool holdRenderEvents = requestedMs == 0u;
-        const auto periodMs = holdRenderEvents
-            ? 50u
+        // A zero request is a clock-frozen startup pulse. Keep Apple's render
+        // callback alive every 10 ms and retire the synthetic buffer quantum, but
+        // do not advance IAudioClock::GetPosition until the bound ALAC/QLAC cursor
+        // is published. The runtime's 5 s timeout restores normal clock ticks.
+        const bool freezeClockDuringWarmup = requestedMs == 0u;
+        const auto periodMs = freezeClockDuringWarmup
+            ? 10u
             : std::clamp<std::uint32_t>(requestedMs, 8u, 600u);
         LARGE_INTEGER dueTime{};
         dueTime.QuadPart = -static_cast<LONGLONG>(periodMs) * 10'000;
@@ -914,8 +916,7 @@ DWORD WINAPI NativeAudioClientProxy::PumpThreadThunk(void* context) noexcept {
             ARRAYSIZE(waitHandles), waitHandles, FALSE, INFINITE);
         if (waitResult == WAIT_OBJECT_0) break;
         if (waitResult != WAIT_OBJECT_0 + 1) break;
-        if (holdRenderEvents) continue;
-        self->softwareBuffer_->Tick();
+        self->softwareBuffer_->Tick(!freezeClockDuringWarmup);
         const auto eventHandle = self->pumpEvent_.load(std::memory_order_acquire);
         if (eventHandle) SetEvent(eventHandle);
     }
