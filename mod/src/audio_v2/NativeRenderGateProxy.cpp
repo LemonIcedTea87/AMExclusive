@@ -901,8 +901,8 @@ DWORD WINAPI NativeAudioClientProxy::PumpThreadThunk(void* context) noexcept {
             ? self->callbacks_.pumpPeriodMs(self->callbacks_.context)
             : 10u;
         // NativePumpPeriodMs normally returns 9-11 ms. The bounded cold-start
-        // experiment may request 100 ms to slow only the first scheduler pre-roll.
-        const auto periodMs = std::clamp<std::uint32_t>(requestedMs, 8u, 120u);
+        // experiment may request 500 ms to strongly limit the first scheduler pre-roll.
+        const auto periodMs = std::clamp<std::uint32_t>(requestedMs, 8u, 600u);
         LARGE_INTEGER dueTime{};
         dueTime.QuadPart = -static_cast<LONGLONG>(periodMs) * 10'000;
         if (!SetWaitableTimer(timer, &dueTime, 0, nullptr, nullptr, FALSE)) break;
