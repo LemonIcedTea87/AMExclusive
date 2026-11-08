@@ -2164,9 +2164,40 @@ void AudioCoreRuntime::Emit(AudioCoreRuntimeEvent event, HRESULT result) noexcep
     snapshot.reducingBitDepth = coordinator_.IsReducingBitDepth();
     snapshot.sourceMappingExact = coordinator_.IsSourceMappingExact();
     snapshot.converting = coordinator_.IsConverting();
-    if (event == AudioCoreRuntimeEvent::Telemetry) snapshot.stats = StatsLocked();
-    else if (event == AudioCoreRuntimeEvent::Faulted)
+    if (event == AudioCoreRuntimeEvent::Telemetry) {
+        snapshot.stats = StatsLocked();
+    } else if (event == AudioCoreRuntimeEvent::Faulted) {
         snapshot.stats.sink = coordinator_.Sink().Stats();
+        // Capture runtime-owned fields under the control lock so the diagnostic
+        // writer never reads mutable runtime state from its dispatch thread.
+        auto& diagnostics = snapshot.diagnostics;
+        diagnostics.eventEpoch = eventEpoch_;
+        diagnostics.mediaGeneration = snapshot.mediaGeneration;
+        diagnostics.boundConverter = BoundConverter();
+        diagnostics.graphConverter = graphConverter_;
+        diagnostics.graphUnit = graphUnit_;
+        diagnostics.graphOutputUnit = graphOutputUnit_;
+        diagnostics.nativeClient = nativeClient_.load(std::memory_order_acquire);
+        diagnostics.latestSeekEpoch = latestSeekEpoch_;
+        diagnostics.callbackDepth = callbackDepth_.load(std::memory_order_acquire);
+        diagnostics.graphBound = graphBound_;
+        diagnostics.graphStarted = graphStarted_;
+        diagnostics.graphPaused = graphPaused_;
+        diagnostics.graphControlPending = graphControlPending_;
+        diagnostics.userPauseIntent = userPauseIntent_;
+        diagnostics.resumePrebufferPending = resumePrebufferPending_;
+        diagnostics.resumeProducerPending = resumeProducerPending_;
+        diagnostics.nativeInitialized = nativeInitialized_;
+        diagnostics.nativeStarted = nativeStarted_;
+        diagnostics.playbackStateAvailable = playbackStateAvailable_;
+        diagnostics.observedPlaybackPlaying = observedPlaybackPlaying_;
+        diagnostics.observedPlaybackItem = observedPlaybackItem_;
+        diagnostics.seekFence = seekFence_;
+        diagnostics.streamingProducerDrainPending = streamingProducerDrainPending_;
+        diagnostics.streamingProducerDrainConverter = streamingProducerDrainConverter_;
+        diagnostics.endOfStreamDrainPending = endOfStreamDrainPending_;
+        diagnostics.endOfStreamDrainConverter = endOfStreamDrainConverter_;
+    }
     std::lock_guard lock(pendingEventMutex_);
     if (pendingEventCount_ < pendingEvents_.size()) {
         pendingEvents_[pendingEventCount_++] = snapshot;
