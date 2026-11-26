@@ -222,14 +222,15 @@ public:
     void OnAudioUnitInitialized(void* unit, void* candidateConverter,
                                 std::uint32_t sampleRate, std::uint32_t channels,
                                 std::uint32_t sourceBitDepth,
-                                std::uint64_t observationId = 0) noexcept;
+                                std::uint64_t observationId = 0,
+                                bool advisorySourcePrecision = false) noexcept;
     void OnAudioUnitInputFormatUpdated(void* unit, std::uint32_t sampleRate,
                                        std::uint32_t channels,
                                        std::uint32_t sourceBitDepth,
                                        std::uint64_t observationId) noexcept;
     void OnAudioUnitStarted(void* unit) noexcept;
     void OnAudioUnitStopped(void* unit) noexcept;
-    void OnAudioUnitUninitialized(void* unit) noexcept;
+    void OnAudioUnitUninitialized(void* unit, std::uint64_t lastObservation = 0) noexcept;
 
     void OnNativeClientInitialized(void* client, const wchar_t* endpoint,
                                    AUDCLNT_SHAREMODE shareMode, DWORD flags,
@@ -363,7 +364,7 @@ private:
     bool DirectSelectionPending() const noexcept;
     bool RetireDirectSelectionLocked() noexcept;
     bool BeginEndOfStreamDrainLocked(void* converter, bool requireShortTail) noexcept;
-    void FinalizeEndOfStreamDrainLocked() noexcept;
+    HRESULT FinalizeEndOfStreamDrainLocked(HRESULT drainResult = S_OK) noexcept;
     void RetireCompletedCaptureLocked(void* converter) noexcept;
     void TryBindPendingGraphLocked() noexcept;
     void RetireCaptureLocked(bool keepGraph, bool keepPendingCapture = false) noexcept;
@@ -472,6 +473,12 @@ private:
     bool seekFence_{};
     std::uint64_t latestSeekEpoch_{};
     ULONGLONG seekFenceReleaseTick_{};
+    struct SeekRebuild final {
+        void* unit{};
+        std::uint32_t sampleRate{};
+        std::uint64_t lastObservation{};
+        std::uint64_t lastRegistration{};
+    } seekRebuild_{};
     bool nativeInitialized_{};
     bool nativeStarted_{};
     bool graphBound_{};
@@ -507,6 +514,7 @@ private:
     std::atomic<void*> streamingEofCandidateConverter_{};
     bool endOfStreamDrainPending_{};
     void* endOfStreamDrainConverter_{};
+    void* endOfStreamDrainUnit_{};
     std::atomic<std::uint64_t> directSelectionArmEpoch_{};
     std::atomic<std::uint64_t> directSelectionArmGeneration_{};
     std::atomic<std::uint64_t> transportSkipArmEpoch_{};

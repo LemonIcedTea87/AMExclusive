@@ -130,6 +130,7 @@ bool AudioCoreRuntime::Start(const AudioCoreRuntimeCallbacks& callbacks) noexcep
     observedPlaybackPlaying_ = false;
     observedPlaybackItem_ = pausedPlaybackItem_ = pausedPlaybackGeneration_ = 0;
     seekFence_ = false;
+    seekRebuild_ = {};
     latestSeekEpoch_ = 0;
     seekFenceReleaseTick_ = 0;
     streamingProducerDrainPending_ = false;
@@ -242,6 +243,7 @@ void AudioCoreRuntime::SetUiEnabled(bool enabled) noexcept {
     userPauseIntent_ = false;
     nativeStartedAfterUserPause_ = false;
     seekFence_ = false;
+    seekRebuild_ = {};
     streamingProducerDrainPending_ = false;
     streamingProducerDrainConverter_ = nullptr;
     streamingEofCandidateConverter_.store(nullptr, std::memory_order_release);
@@ -450,6 +452,7 @@ void AudioCoreRuntime::OnTransportSkip(std::uint64_t epoch) noexcept {
         directSelectionSkipEpoch_.store(epoch, std::memory_order_release);
     }
     ControlScope lock(*this);
+    seekRebuild_ = {};
     if (transportSkip) {
         const auto armedGeneration =
             transportSkipArmGeneration_.load(std::memory_order_acquire);
@@ -515,6 +518,7 @@ bool AudioCoreRuntime::DirectSelectionPending() const noexcept {
 
 bool AudioCoreRuntime::RetireDirectSelectionLocked() noexcept {
     if (!DirectSelectionPending()) return false;
+    seekRebuild_ = {};
     AdvanceEventEpochLocked();
     const auto converter = boundConverter_.load(std::memory_order_acquire);
     // Preserve only an already selected, identity-checked successor. Never
@@ -534,6 +538,12 @@ void AudioCoreRuntime::OnTransportSeekBegin(std::uint64_t epoch) noexcept {
     latestSeekEpoch_ = epoch;
     seekFence_ = true;
     seekFenceReleaseTick_ = 0;
+    seekRebuild_ = {};
+    ConverterRegistrationSnapshot outgoing{};
+    if (graphUnit_ && registry_.Snapshot(BoundConverter(), outgoing) && outgoing.bound &&
+        (outgoing.registration.encodedFormat == kAlac || outgoing.registration.encodedFormat == kQlac)) {
+        seekRebuild_ = {graphUnit_, outgoing.registration.outputFormat.sampleRate};
+    }
     // Silence the currently audible generation as soon as the user grabs the
     // scrubber. Apple may rebuild several transient graphs while the pointer
     // moves; those graphs may capture P0, but they are not allowed to own the
@@ -770,6 +780,7 @@ bool AudioCoreRuntime::BeginEndOfStreamDrainLocked(void* converter,
     if (!coordinator_.SealEndOfStream()) return false;
     endOfStreamDrainPending_ = true;
     endOfStreamDrainConverter_ = converter;
+    endOfStreamDrainUnit_ = graphUnit_;
     return true;
 }
 
@@ -1127,23 +1138,69 @@ void AudioCoreRuntime::OnAudioUnitInitialized(void* unit, void* candidateConvert
                                                std::uint32_t sampleRate,
                                                std::uint32_t channels,
                                                std::uint32_t sourceBitDepth,
-                                               std::uint64_t observationId) noexcept {
+                                               std::uint64_t observationId,
+                                               bool advisorySourcePrecision) noexcept {
     if (!UiEnabled() || !unit) return;
     ControlScope lock(*this);
     ExtendSeekQuietPeriodLocked();
-    if (!candidateConverter && sampleRate != 0 && channels != 0 && sourceBitDepth != 0) {
-        // AudioUnitInitialize commonly runs on a render/control thread
-        // different from the converter setup thread. Resolve the converter by
-        // the cross-thread format observation rather than assuming TLS.
-        registry_.FindCandidate(sampleRate, channels, sourceBitDepth, observationId,
-                                candidateConverter);
-    }
-    if (!candidateConverter && sampleRate != 0 && channels != 0 && sourceBitDepth == 0) {
-        // Some Apple output units expose only the LPCM tuple.  Once the
-        // decoder cookie has supplied precision, resolve the compressed P0
-        // registration by rate/channel and carry its source depth forward.
-        registry_.FindCandidateAnyPrecision(sampleRate, channels, observationId,
-                                             candidateConverter, sourceBitDepth);
+    if (!candidateConverter && sampleRate != 0 && channels != 0) {
+        if (advisorySourcePrecision) {
+            // A historical cookie can describe an already disposed decoder.
+            // Only the exact observation or a unique newer live lossless
+            // source can supply precision for this cross-thread AudioUnit.
+            const auto hintedDepth = sourceBitDepth;
+            if (!registry_.FindCandidateAnyPrecision(sampleRate, channels, observationId,
+                                                       candidateConverter, sourceBitDepth)) {
+                // After a sealed streaming EOF and Uninitialize of the same child,
+                // the old source can still be draining at a different source depth.
+                // Exclude only that bound registration from the usual uniqueness check.
+                const auto& previousSource = coordinator_.SourceFormat();
+                ConverterRegistrationSnapshot predecessor{};
+                std::uint64_t ignoredRegistrationId{};
+                if (endOfStreamDrainPending_ && !graphUnit_ && unit == endOfStreamDrainUnit_ &&
+                    !seekFence_ && !userPauseIntent_ && !DirectSelectionPending() &&
+                    hintedDepth != 0 && previousSource.sampleRate == sampleRate &&
+                    previousSource.channels == channels && previousSource.sourceValidBits != hintedDepth &&
+                    registry_.Snapshot(endOfStreamDrainConverter_, predecessor) && predecessor.bound &&
+                    predecessor.registration.mediaGeneration == coordinator_.MediaGeneration() &&
+                    predecessor.registration.observationId < observationId &&
+                    (predecessor.registration.encodedFormat == kAlac ||
+                     predecessor.registration.encodedFormat == kQlac)) {
+                    ignoredRegistrationId = predecessor.registrationId;
+                }
+
+                void* liveConverter{};
+                std::uint32_t liveBits{};
+                const bool uniqueLive = registry_.FindCandidateAnyPrecision(
+                    sampleRate, channels, 0, liveConverter, liveBits, true, ignoredRegistrationId);
+                // A seek can leave transient decoders registered after the child
+                // is torn down. Retry the uniqueness check only for the same child
+                // with a fresh cookie and decoder registration after its teardown.
+                const bool uniqueAfterSeek = !uniqueLive && seekFence_ && !graphUnit_ &&
+                    !userPauseIntent_ && !DirectSelectionPending() && seekRebuild_.unit == unit &&
+                    seekRebuild_.sampleRate == sampleRate && seekRebuild_.lastRegistration != 0 &&
+                    observationId > seekRebuild_.lastObservation &&
+                    registry_.FindCandidateAnyPrecision(sampleRate, channels, 0, liveConverter,
+                                                        liveBits, true, 0, seekRebuild_.lastRegistration);
+                ConverterRegistrationSnapshot live{};
+                if ((uniqueLive || uniqueAfterSeek) && liveBits != 0 &&
+                    ((ignoredRegistrationId == 0 && !uniqueAfterSeek) || liveBits == hintedDepth) &&
+                    registry_.Snapshot(liveConverter, live) &&
+                    (live.registration.encodedFormat == kAlac ||
+                     live.registration.encodedFormat == kQlac) &&
+                    live.registration.observationId > observationId) {
+                    candidateConverter = liveConverter;
+                    sourceBitDepth = liveBits;
+                    observationId = live.registration.observationId;
+                }
+            }
+        } else if (sourceBitDepth != 0) {
+            registry_.FindCandidate(sampleRate, channels, sourceBitDepth, observationId,
+                                    candidateConverter);
+        } else {
+            registry_.FindCandidateAnyPrecision(sampleRate, channels, observationId,
+                                                 candidateConverter, sourceBitDepth);
+        }
     }
     // Apple initializes the hardware-output parent AudioUnit after the child
     // graph unit that owns the P0 converter (the inverse order of the parent
@@ -1186,6 +1243,8 @@ void AudioCoreRuntime::OnAudioUnitInitialized(void* unit, void* candidateConvert
         // will repopulate graphOutputUnit_.
         graphOutputUnit_ = nullptr;
     }
+    endOfStreamDrainUnit_ = nullptr;
+    seekRebuild_ = {};
     graphUnit_ = unit;
     graphConverter_ = candidateConverter;
     graphRate_ = sampleRate;
@@ -1478,12 +1537,16 @@ void AudioCoreRuntime::OnAudioUnitStopped(void* unit) noexcept {
     Wake();
 }
 
-void AudioCoreRuntime::OnAudioUnitUninitialized(void* unit) noexcept {
+void AudioCoreRuntime::OnAudioUnitUninitialized(void* unit, std::uint64_t lastObservation) noexcept {
     if (!UiEnabled()) return;
     ControlScope lock(*this);
     ExtendSeekQuietPeriodLocked();
     if (graphUnit_ != unit) return;
     (void)RetireDirectSelectionLocked();
+    if (seekFence_ && seekRebuild_.unit == unit && lastObservation != 0) {
+        seekRebuild_.lastObservation = lastObservation;
+        seekRebuild_.lastRegistration = registry_.LatestRegistrationId();
+    }
     pendingGraphBind_ = {};
     ClearPendingCaptureLocked();
     graphPaused_ = false;
@@ -2057,18 +2120,34 @@ DWORD AudioCoreRuntime::WorkerMain() noexcept {
             ControlScope lock(*this);
             nextDiagnosticTelemetryTick_ = 0;
             if (graphBound_ && coordinator_.SinkState() == WasapiSinkState::Faulted) {
-                HRESULT sinkError = coordinator_.Sink().Stats().lastError;
-                if (SUCCEEDED(sinkError)) sinkError = E_UNEXPECTED;
-                if (TryRecoverInvalidatedSinkLocked(sinkError)) continue;
-                // TryBindGraphLocked may itself fail closed while rebuilding.
-                if (!UiEnabled()) continue;
-                uiEnabled_.store(false, std::memory_order_release);
-                Emit(AudioCoreRuntimeEvent::Faulted, sinkError);
-                RetireCaptureLocked(false);
-                registry_.RetireAll();
-                continue;
+                const auto sink = coordinator_.Sink().Stats();
+                HRESULT sinkError = sink.lastError;
+                const bool terminalDrainTimedOut =
+                    sinkError == ammod::audio::kEndpointDrainTimeout &&
+                    coordinator_.Phase() == AudioCoreGatePhase::Active &&
+                    endOfStreamDrainPending_ && endOfStreamDrainConverter_ &&
+                    endOfStreamDrainConverter_ == BoundConverter() &&
+                    sink.clientStarts != 0 && sink.submittedFrames != 0 &&
+                    coordinator_.Sink().EndOfStreamSubmitted() &&
+                    !coordinator_.Sink().EndOfStreamComplete() &&
+                    SUCCEEDED(sink.clockReadResult);
+                if (terminalDrainTimedOut) {
+                    sinkError = FinalizeEndOfStreamDrainLocked(sinkError);
+                }
+                if (!terminalDrainTimedOut || FAILED(sinkError)) {
+                    if (SUCCEEDED(sinkError)) sinkError = E_UNEXPECTED;
+                    if (TryRecoverInvalidatedSinkLocked(sinkError)) continue;
+                    // TryBindGraphLocked may itself fail closed while rebuilding.
+                    if (!UiEnabled()) continue;
+                    uiEnabled_.store(false, std::memory_order_release);
+                    Emit(AudioCoreRuntimeEvent::Faulted, sinkError);
+                    RetireCaptureLocked(false);
+                    registry_.RetireAll();
+                    continue;
+                }
+            } else {
+                (void)FinalizeEndOfStreamDrainLocked();
             }
-            FinalizeEndOfStreamDrainLocked();
             TryBindPendingGraphLocked();
             if (!graphBound_) {
                 if (void* pendingLocal =
@@ -2696,6 +2775,7 @@ void AudioCoreRuntime::TryActivateLocked() noexcept {
         if (seekFenceReleaseTick_ == 0 || GetTickCount64() < seekFenceReleaseTick_) return;
         seekFence_ = false;
         seekFenceReleaseTick_ = 0;
+        seekRebuild_ = {};
     }
     if (!UiEnabled() || !graphBound_ || !graphStarted_ || !nativeInitialized_ ||
         !nativeStarted_ || coordinator_.Phase() != AudioCoreGatePhase::Capturing ||
@@ -2814,8 +2894,9 @@ void AudioCoreRuntime::TryActivateLocked() noexcept {
     Emit(AudioCoreRuntimeEvent::Active, S_OK);
 }
 
-void AudioCoreRuntime::FinalizeEndOfStreamDrainLocked() noexcept {
-    if (!endOfStreamDrainPending_ || !coordinator_.EndOfStreamComplete()) return;
+HRESULT AudioCoreRuntime::FinalizeEndOfStreamDrainLocked(HRESULT drainResult) noexcept {
+    if (!endOfStreamDrainPending_ ||
+        (SUCCEEDED(drainResult) && !coordinator_.EndOfStreamComplete())) return S_OK;
 
     const auto drainedConverter = endOfStreamDrainConverter_;
     const auto localSuccessor = pendingLocalSuccessor_;
@@ -2823,9 +2904,15 @@ void AudioCoreRuntime::FinalizeEndOfStreamDrainLocked() noexcept {
     endOfStreamDrainConverter_ = nullptr;
     pendingLocalSuccessor_ = nullptr;
 
-    // SRC completion requires device-clock drain evidence after terminal
-    // submission; native-rate output now uses the same device-clock drain.
+    // A watchdog timeout ends this stream with its original error still logged
+    // by CloseExit. It leaves the selected successor eligible for handoff.
     RetireCompletedCaptureLocked(drainedConverter);
+
+    if (FAILED(drainResult)) {
+        // Close preserves the original sink error unless teardown itself fails.
+        const HRESULT closeResult = coordinator_.Sink().Stats().lastError;
+        if (FAILED(closeResult) && closeResult != drainResult) return closeResult;
+    }
 
     if (localSuccessor) {
         ConverterRegistrationSnapshot snapshot{};
@@ -2841,14 +2928,15 @@ void AudioCoreRuntime::FinalizeEndOfStreamDrainLocked() noexcept {
         }
     }
     TryBindPendingGraphLocked();
+    return S_OK;
 }
 
 void AudioCoreRuntime::RetireCompletedCaptureLocked(void* converter) noexcept {
     const auto successor = pendingGraphBind_;
     RetireCaptureLocked(true, true);
     if (graphConverter_ == converter) graphConverter_ = nullptr;
-    // Only natural completion/producer disposal may carry a blocked successor
-    // across retirement. Skip, seek, rejection and UI Off use plain retirement.
+    // Keep only the selected successor across a handoff retirement.
+    // Skip, seek, rejection and UI Off use plain retirement.
     if (successor.converter && successor.converter != converter &&
         successor.unit == graphUnit_ && successor.converter == graphConverter_) {
         pendingGraphBind_ = successor;
@@ -2912,6 +3000,7 @@ void AudioCoreRuntime::RetireCaptureLocked(bool keepGraph, bool keepPendingCaptu
     streamingEofCandidateConverter_.store(nullptr, std::memory_order_release);
     endOfStreamDrainPending_ = false;
     endOfStreamDrainConverter_ = nullptr;
+    endOfStreamDrainUnit_ = nullptr;
     pendingLocalSuccessor_ = nullptr;
     pendingLocalRebindConverter_.store(nullptr, std::memory_order_release);
     const bool hasCapture = graphBound_ ||

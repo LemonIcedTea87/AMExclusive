@@ -255,6 +255,9 @@ public:
         return converter != nullptr;
     }
 
+    // Read under the same Runtime control lock that serializes Register.
+    std::uint64_t LatestRegistrationId() const noexcept { return nextRegistrationId_; }
+
     // Same lookup as FindCandidate, but used when AudioUnit stream-format
     // metadata has no source precision.  The caller receives the precision
     // carried by the selected compressed registration and can then bind the
@@ -262,7 +265,10 @@ public:
     bool FindCandidateAnyPrecision(std::uint32_t sampleRate, std::uint32_t channels,
                                    std::uint64_t observationId,
                                    void*& converter,
-                                   std::uint32_t& sourceBitDepth) const noexcept {
+                                   std::uint32_t& sourceBitDepth,
+                                   bool requireUnique = false,
+                                   std::uint64_t ignoredRegistrationId = 0,
+                                   std::uint64_t afterRegistrationId = 0) const noexcept {
         converter = nullptr;
         sourceBitDepth = 0;
         const Slot* best{};
@@ -273,7 +279,15 @@ public:
                 slot.channels.load(std::memory_order_relaxed) != channels) {
                 continue;
             }
+            if (ignoredRegistrationId != 0 || afterRegistrationId != 0) {
+                const auto registrationId = slot.registrationId.load(std::memory_order_relaxed);
+                if (registrationId == ignoredRegistrationId || registrationId <= afterRegistrationId)
+                    continue;
+            }
             const auto encoded = slot.encodedFormat.load(std::memory_order_relaxed);
+            // A live local source with this format also makes a rate-only
+            // match ambiguous, even though this lookup returns compressed sources.
+            if (requireUnique && encoded == 0x6C70636Du) return false;
             if (encoded != 0x616C6163u && encoded != 0x716C6163u &&
                 encoded != 0x71616163u) continue;
             const auto depth = slot.sourceBitDepth.load(std::memory_order_relaxed);
@@ -284,6 +298,7 @@ public:
             if (depth != 0 && !IsSupportedSourceDepth(static_cast<std::uint16_t>(depth))) continue;
             const auto observed = slot.observationId.load(std::memory_order_relaxed);
             if (observationId != 0 && observed != observationId) continue;
+            if (requireUnique && best) return false;
             if (observed < bestObservation) continue;
             best = &slot;
             bestObservation = observed;
